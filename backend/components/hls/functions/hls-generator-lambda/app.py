@@ -235,18 +235,21 @@ def get_collected_flows(flows):
 
 @tracer.capture_method(capture_response=False)
 def get_collection_hls(video_flows, audio_flows, subtitle_flows):
-    video_flows.sort(key=lambda k: k["max_bit_rate"], reverse=True)
+    # Sort by max_bit_rate descending (highest quality first)
+    # TAMS spec: max_bit_rate is optional, default to 0 for flows without bit rate info
+    video_flows.sort(key=lambda k: k.get("max_bit_rate", 0), reverse=True)
     manifest = m3u8.M3U8()
     manifest.version = 4
     manifest.is_independent_segments = True
     # Use Stream for Audio if no Video present
     if len(video_flows) == 0:
         for flow in audio_flows:
+            # TAMS spec: max_bit_rate/avg_bit_rate are optional, default to 0
             manifest.add_playlist(
                 m3u8.Playlist(
                     stream_info={
-                        "bandwidth": flow["max_bit_rate"],
-                        "average_bandwidth": flow["avg_bit_rate"],
+                        "bandwidth": flow.get("max_bit_rate", 0),
+                        "average_bandwidth": flow.get("avg_bit_rate", 0),
                         "codecs": map_codec(flow),
                     },
                     uri=get_signed_url(f'flows/{flow["id"]}/segments/manifest.m3u8'),
@@ -290,11 +293,12 @@ def get_collection_hls(video_flows, audio_flows, subtitle_flows):
         codecs = map_codec(flow)
         if first_audio:
             codecs += f",{first_audio.extras["codecs"]}"
+        # TAMS spec: max_bit_rate/avg_bit_rate are optional, default to 0
         manifest.add_playlist(
             m3u8.Playlist(
                 stream_info={
-                    "bandwidth": flow["max_bit_rate"],
-                    "average_bandwidth": flow["avg_bit_rate"],
+                    "bandwidth": flow.get("max_bit_rate", 0),
+                    "average_bandwidth": flow.get("avg_bit_rate", 0),
                     "codecs": codecs,
                     "resolution": f"{width}x{height}",
                     "frame_rate": frame_rate,
