@@ -4,32 +4,26 @@ from collections import defaultdict, deque
 from datetime import datetime
 from functools import lru_cache
 from http import HTTPStatus
+from urllib.parse import urlparse, quote
 
 import boto3
 import m3u8
 import requests
-from botocore.config import Config
 from aws_lambda_powertools import Logger, Tracer
-from aws_lambda_powertools.event_handler import Response
-from aws_lambda_powertools.logging import correlation_paths
+from botocore.auth import SigV4QueryAuth
+from botocore.awsrequest import AWSRequest
+from aws_lambda_powertools.event_handler import LambdaFunctionUrlResolver, Response
 from aws_lambda_powertools.utilities.typing import LambdaContext
-from s3_object_lambda import S3ObjectLambdaResolver
 from mediatimestamp.immutable import TimeRange
 from openid_auth import Credentials
 
 tracer = Tracer()
 logger = Logger()
-app = S3ObjectLambdaResolver()
+app = LambdaFunctionUrlResolver()
 
 ssm = boto3.client("ssm")
-s3 = boto3.client(
-    "s3",
-    region_name=os.environ["AWS_REGION"],
-    config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
-)
 
 endpoint = os.environ["TAMS_ENDPOINT"]
-object_lambda_access_point_arn = os.environ["OBJECT_LAMBDA_ACCESS_POINT_ARN"]
 creds = Credentials(
     scopes=["tams-api/read"],
     secret_arn=os.environ["SECRET_ARN"],
@@ -38,14 +32,47 @@ default_hls_segments = os.environ["DEFAULT_HLS_SEGMENTS"]
 codec_parameter = os.environ["CODEC_PARAMETER"]
 
 
+@lru_cache()
+def get_function_url():
+    """Discover this Lambda's Function URL at runtime"""
+    function_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "")
+    if not function_name:
+        return None
+    try:
+        lambda_client = boto3.client("lambda")
+        response = lambda_client.get_function_url_config(FunctionName=function_name)
+        return response.get("FunctionUrl")
+    except Exception as ex:
+        logger.warning("Could not get function URL")
+        logger.exception(ex)
+        return None
+
+
 @tracer.capture_method(capture_response=False)
 def get_signed_url(obj, expires_in=60):
-    presigned_url = s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": object_lambda_access_point_arn, "Key": obj},
-        ExpiresIn=expires_in,
-    )
-    return presigned_url
+    """Generate presigned URL for Lambda Function URL path"""
+    function_url = get_function_url()
+    if not function_url:
+        return f"/{obj}"
+
+    region = os.environ["AWS_REGION"]
+    # Encode path segments but keep slashes
+    encoded_obj = "/".join(quote(segment, safe="") for segment in obj.split("/"))
+    full_url = f"{function_url.rstrip('/')}/{encoded_obj}"
+
+    # Get credentials from Lambda execution role
+    session = boto3.Session()
+    credentials = session.get_credentials().get_frozen_credentials()
+
+    # Create request for signing
+    request = AWSRequest(method="GET", url=full_url)
+    parsed = urlparse(full_url)
+    request.headers["Host"] = parsed.netloc
+
+    # Sign with query string auth (adds signature as URL params)
+    SigV4QueryAuth(credentials, "lambda", region, expires=expires_in).add_auth(request)
+
+    return request.url
 
 
 @lru_cache()
@@ -284,7 +311,7 @@ def get_collection_hls(video_flows, audio_flows, subtitle_flows):
     return manifest.dumps()
 
 
-@app.key("/sources/<sourceId>/manifest.m3u8")
+@app.get("/sources/<sourceId>/manifest.m3u8")
 @tracer.capture_method(capture_response=False)
 def get_source_hls(sourceId: str):
     manifest = m3u8.M3U8()
@@ -302,7 +329,8 @@ def get_source_hls(sourceId: str):
         )
     # pylint: disable=broad-exception-caught
     except Exception as ex:
-        logger.error(ex)
+        logger.error("Error generating source manifest")
+        logger.exception(ex)
     return Response(
         status_code=HTTPStatus.OK.value,  # 200
         content_type="application/vnd.apple.mpegurl",
@@ -310,7 +338,7 @@ def get_source_hls(sourceId: str):
     )
 
 
-@app.key("/flows/<flowId>/manifest.m3u8")
+@app.get("/flows/<flowId>/manifest.m3u8")
 @tracer.capture_method(capture_response=False)
 def get_flow_hls(flowId: str):
     manifest = m3u8.M3U8()
@@ -335,15 +363,15 @@ def get_flow_hls(flowId: str):
         )
     # pylint: disable=broad-exception-caught
     except Exception as ex:
-        logger.error(ex)
+        logger.error("Error generating flow manifest")
+        logger.exception(ex)
     return Response(
         status_code=HTTPStatus.OK.value,  # 200
         content_type="application/vnd.apple.mpegurl",
         body=manifest.dumps(),
     )
 
-
-@app.key("/flows/<flowId>/segments/manifest.m3u8")
+@app.get("/flows/<flowId>/segments/manifest.m3u8")
 @tracer.capture_method(capture_response=False)
 def get_segments_hls(flowId: str):
     manifest = m3u8.M3U8()
@@ -403,7 +431,8 @@ def get_segments_hls(flowId: str):
             manifest.is_endlist = True
     # pylint: disable=broad-exception-caught
     except Exception as ex:
-        logger.error(ex)
+        logger.error("Error generating segments manifest")
+        logger.exception(ex)
     return Response(
         status_code=HTTPStatus.OK.value,  # 200
         content_type="application/vnd.apple.mpegurl",
@@ -411,9 +440,7 @@ def get_segments_hls(flowId: str):
     )
 
 
-@logger.inject_lambda_context(
-    log_event=True, correlation_id_path=correlation_paths.S3_OBJECT_LAMBDA
-)
+@logger.inject_lambda_context(log_event=True)
 @tracer.capture_lambda_handler(capture_response=False)
 # pylint: disable=unused-argument
 def lambda_handler(event, context: LambdaContext) -> dict:
