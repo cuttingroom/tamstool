@@ -1,7 +1,0 @@
-RulesToSuppress:
-  - id: W64
-    reason: AWS::Serverless::Function does not handle this well
-  - id: W68
-    reason: AWS::Serverless::Function does not handle this well
-  - id: W69
-    reason: AWS::Serverless::Function does not handle this well
