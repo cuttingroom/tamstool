@@ -1,3 +1,4 @@
+import "@byomakase/omakase-player/dist/style.css";
 import "@byomakase/omakase-react-components/dist/omakase-react-components.css";
 
 import { OmakasePlayerTamsComponent } from ".";
