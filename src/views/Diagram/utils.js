@@ -19,10 +19,12 @@ const getEntities = async (api, path, graph = {}) => {
   } else {
     // Handle source flows in parallel
     const { data: source_flows } = await api.get(`/flows?source_id=${resp.id}`);
-    source_flows.forEach((flow) => {
-      const flowPath = `/flows/${flow.id}`;
-      graph[flowPath] = flow;
-    });
+    if (Array.isArray(source_flows)) {
+      source_flows.forEach((flow) => {
+        const flowPath = `/flows/${flow.id}`;
+        graph[flowPath] = flow;
+      });
+    }
   }
 
   // Handle collected_by
