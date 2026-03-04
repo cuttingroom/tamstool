@@ -33,7 +33,7 @@ const EssenceParameters = ({ essenceParameters }) => {
         },
       ]}
       expandableRows={{
-        getItemChildren: (item) => item.children,
+        getItemChildren: (item) => item.children ?? [],
         isItemExpandable: (item) => Boolean(item.children),
         expandedItems: hierarchicalEssenceParameters
           .filter((param) => Boolean(param.children))
