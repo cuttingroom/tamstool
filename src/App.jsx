@@ -1,6 +1,7 @@
 import { HashRouter, Route, Routes } from "react-router-dom";
 
 import Diagram from "@/views/Diagram";
+import Embed from "@/views/Embed";
 import Flow from "@/views/Flow";
 import Flows from "@/views/Flows";
 import { OmakaseHlsPlayer } from "@/views/OmakasePlayer";
@@ -15,6 +16,7 @@ const App = () => {
   return (
     <HashRouter>
       <Routes>
+        <Route path="/embed" element={<Embed />} />
         <Route path="/" element={<Layout />}>
           <Route index element={<Home />} />
           <Route path="stores" element={<StoreManager />} />

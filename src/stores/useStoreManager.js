@@ -32,6 +32,11 @@ const useStoreManager = create(
         set({ stores });
       },
 
+      getCuttingRoomTamsId: () => {
+        const store = get().getActiveStore();
+        return store?.cuttingRoomTamsId || "";
+      },
+
       setActiveStore: (id) => set({ activeStoreId: id }),
 
       getActiveStore: () => {

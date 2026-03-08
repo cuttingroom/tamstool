@@ -37,11 +37,13 @@ const StoreManager = () => {
   const [formTokenUrl, setFormTokenUrl] = useState("");
   const [formClientId, setFormClientId] = useState("");
   const [formClientSecret, setFormClientSecret] = useState("");
+  const [formCuttingRoomTamsId, setFormCuttingRoomTamsId] = useState("");
   const [testStatus, setTestStatus] = useState(null);
 
   const resetForm = () => {
     setFormName("");
     setFormEndpoint("");
+    setFormCuttingRoomTamsId("");
     setFormAuthType("none");
     setFormToken("");
     setFormTokenUrl("");
@@ -60,6 +62,7 @@ const StoreManager = () => {
     setEditingStore(store);
     setFormName(store.name);
     setFormEndpoint(store.endpoint);
+    setFormCuttingRoomTamsId(store.cuttingRoomTamsId || "");
     setFormAuthType(store.authType || (store.token ? "bearer" : "none"));
     setFormToken(store.token || "");
     setFormTokenUrl(store.tokenUrl || "");
@@ -73,6 +76,7 @@ const StoreManager = () => {
     const base = {
       name: formName.trim(),
       endpoint: formEndpoint.trim().replace(/\/+$/, ""),
+      cuttingRoomTamsId: formCuttingRoomTamsId.trim() || null,
       authType: formAuthType,
     };
     if (formAuthType === "bearer") {
@@ -280,6 +284,20 @@ const StoreManager = () => {
                 onChange={({ detail }) => setFormEndpoint(detail.value)}
                 placeholder="https://tams.example.com"
                 type="url"
+              />
+            </FormField>
+            <FormField
+              label="CuttingRoom TAMS ID"
+              description="The store identifier used in CuttingRoom CRL references. Lowercase letters, numbers, and hyphens only."
+            >
+              <Input
+                value={formCuttingRoomTamsId}
+                onChange={({ detail }) =>
+                  setFormCuttingRoomTamsId(
+                    detail.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
+                  )
+                }
+                placeholder="my-tams-store"
               />
             </FormField>
             <FormField label="Authentication">
