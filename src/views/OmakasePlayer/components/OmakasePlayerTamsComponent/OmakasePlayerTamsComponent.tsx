@@ -28,6 +28,7 @@ import {
   MARKER_LANE_STYLE,
   MARKER_LANE_TEXT_LABEL_STYLE,
   MARKER_LIST_CONFIG,
+  MISSING_SEGMENT_MARKER_STYLE,
   PERIOD_MARKER_STYLE,
   PLAYER_CHROMING,
   SCRUBBER_LANE_STYLE,
@@ -138,6 +139,116 @@ function segmentToMarker(
   });
 }
 
+function createHatchPatternImage(): Promise<HTMLImageElement> {
+  const size = 14;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+
+  // Black background
+  ctx.fillStyle = "#0a0a0a";
+  ctx.fillRect(0, 0, size, size);
+
+  // Red diagonal cross lines
+  ctx.strokeStyle = "#b22222";
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = "square";
+
+  // Draw diagonal lines extending beyond bounds for seamless tiling
+  for (let offset = -size; offset <= size * 2; offset += size) {
+    // Forward diagonal (\)
+    ctx.beginPath();
+    ctx.moveTo(offset, 0);
+    ctx.lineTo(offset + size, size);
+    ctx.stroke();
+
+    // Backward diagonal (/)
+    ctx.beginPath();
+    ctx.moveTo(offset + size, 0);
+    ctx.lineTo(offset, size);
+    ctx.stroke();
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.src = canvas.toDataURL();
+  });
+}
+
+function calculateGaps(
+  segments: FlowSegment[],
+  markerOffset: number,
+  videoLength: number
+): { start: number; end: number }[] {
+  if (!segments?.length) {
+    return [{ start: 0, end: videoLength }];
+  }
+
+  const ranges = segments
+    .map((segment) => {
+      const timerange = TimeRangeUtil.parseTimeRange(segment.timerange);
+      let start = timerange.start
+        ? TimeRangeUtil.timeMomentToSeconds(timerange.start) - markerOffset
+        : undefined;
+      let end = timerange.end
+        ? TimeRangeUtil.timeMomentToSeconds(timerange.end) - markerOffset
+        : undefined;
+
+      if (start !== undefined && start < 0) start = 0;
+      if (end !== undefined && end > videoLength) end = videoLength;
+      if (end !== undefined && end < 0) return null;
+      if (start !== undefined && end !== undefined && start > end) return null;
+
+      return start !== undefined && end !== undefined
+        ? { start, end }
+        : null;
+    })
+    .filter((r): r is { start: number; end: number } => r !== null)
+    .sort((a, b) => a.start - b.start);
+
+  const gaps: { start: number; end: number }[] = [];
+  let currentEnd = 0;
+
+  for (const range of ranges) {
+    if (range.start > currentEnd + 0.05) {
+      gaps.push({ start: currentEnd, end: range.start });
+    }
+    currentEnd = Math.max(currentEnd, range.end);
+  }
+
+  if (currentEnd < videoLength - 0.05) {
+    gaps.push({ start: currentEnd, end: videoLength });
+  }
+
+  return gaps;
+}
+
+function applyHatchPatternToMarkers(gapMarkers: PeriodMarker[]) {
+  if (gapMarkers.length === 0) return;
+
+  createHatchPatternImage().then((patternImage) => {
+    for (const marker of gapMarkers) {
+      const selectedAreaRect = (marker as any)._selectedAreaRect;
+      if (selectedAreaRect) {
+        selectedAreaRect.fillPatternImage(patternImage);
+        selectedAreaRect.fillPriority("pattern");
+        selectedAreaRect.fillPatternRepeat("repeat");
+        selectedAreaRect.getLayer()?.batchDraw();
+      }
+      const markerHandleRect = (marker as any)._markerHandleRect;
+      if (markerHandleRect) {
+        markerHandleRect.fillPatternImage(patternImage);
+        markerHandleRect.fillPriority("pattern");
+        markerHandleRect.fillPatternRepeat("repeat");
+        markerHandleRect.opacity(1);
+        markerHandleRect.getLayer()?.batchDraw();
+      }
+    }
+  });
+}
+
 function buildTimeline(
   omakasePlayer: OmakasePlayer,
   timeline: TimelineApi,
@@ -152,6 +263,7 @@ function buildTimeline(
   setSegmentationLanes: React.Dispatch<React.SetStateAction<MarkerLane[]>>
 ) {
   const timelineBuilder = new OmakasePlayerTimelineBuilder(omakasePlayer);
+  const allGapMarkers: PeriodMarker[] = [];
 
   const checkMarkerOverlap = (
     lane: MarkerLane,
@@ -333,6 +445,26 @@ function buildTimeline(
       timelineBuilder.addMarkers(markerLaneId, markers);
     }
 
+    // Add gap markers for missing segments
+    const gaps = calculateGaps(
+      segments ?? [],
+      markerOffset,
+      omakasePlayer.video.getDuration()
+    );
+
+    if (gaps.length > 0) {
+      const gapMarkers = gaps.map(
+        (gap) =>
+          new PeriodMarker({
+            timeObservation: { start: gap.start, end: gap.end },
+            editable: false,
+            style: MISSING_SEGMENT_MARKER_STYLE,
+          })
+      );
+      timelineBuilder.addMarkers(markerLaneId, gapMarkers);
+      allGapMarkers.push(...gapMarkers);
+    }
+
     createLabel(timelineBuilder, flow.description ?? "Segments", labeledLaneId);
 
     if (flow.format === "urn:x-nmos:format:audio") {
@@ -345,6 +477,9 @@ function buildTimeline(
   timeline.getScrubberLane().style = SCRUBBER_LANE_STYLE;
 
   timelineBuilder.buildAttachedTimeline(timeline);
+
+  // Apply diagonal cross hatching pattern to gap markers
+  setTimeout(() => applyHatchPatternToMarkers(allGapMarkers), 50);
 
   const segmentationLane = timeline.getTimelineLane(
     segmentationLaneId

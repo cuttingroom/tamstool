@@ -240,6 +240,16 @@ export const SEGMENT_PERIOD_MARKER_STYLE: Partial<PeriodMarkerStyle> = {
   color: "#00A3E9",
 };
 
+export const MISSING_SEGMENT_MARKER_STYLE: Partial<PeriodMarkerStyle> = {
+  symbolType: "none",
+  symbolSize: 0,
+  selectedAreaOpacity: 1,
+  lineOpacity: 0,
+  markerHandleAreaOpacity: 0,
+  renderType: "lane",
+  color: "#0a0a0a",
+};
+
 export const HIGHLIGHTED_PERIOD_MARKER_STYLE: Partial<PeriodMarkerStyle> & {
   color: string;
 } = {
