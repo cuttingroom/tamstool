@@ -65,6 +65,7 @@ const Layout = () => {
   const navItems = [
     { type: "link", text: "Sources", href: "/sources", disabled: !activeStore },
     { type: "link", text: "Flows", href: "/flows", disabled: !activeStore },
+    { type: "link", text: "Webhooks", href: "/webhooks", disabled: !activeStore },
     { type: "divider" },
     { type: "link", text: "Manage Stores", href: "/stores" },
   ];

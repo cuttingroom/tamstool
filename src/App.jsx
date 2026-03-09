@@ -11,6 +11,7 @@ import React from "react";
 import Source from "@/views/Source";
 import Sources from "@/views/Sources";
 import StoreManager from "@/views/StoreManager";
+import Webhooks from "@/views/Webhooks";
 
 const App = () => {
   return (
@@ -28,6 +29,7 @@ const App = () => {
             <Route index element={<Flows />} />
             <Route path=":flowId" element={<Flow />} />
           </Route>
+          <Route path="webhooks" element={<Webhooks />} />
           <Route path="diagram/:type/:id" element={<Diagram />} />
           <Route path="player/:type/:id" element={<OmakaseHlsPlayer />} />
         </Route>
