@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { useApi } from "@/hooks/useApi";
 import { useSources } from "@/hooks/useSources";
@@ -9,6 +9,48 @@ import { parseTimerange } from "@/utils/timerange";
 import "./Embed.css";
 
 const NANOS_PER_MS = 1_000_000n;
+const STORAGE_KEY = "tamstool-stores";
+
+const isInIframe = (() => {
+  try { return window.self !== window.top; } catch { return true; }
+})();
+
+/**
+ * Request access to the main app's (unpartitioned) localStorage via the
+ * Storage Access API and hydrate the Zustand store from it. Zustand's persist
+ * middleware will then write the state to the iframe's own (partitioned)
+ * localStorage so subsequent loads work without another prompt.
+ */
+const tryLoadSharedConfig = async () => {
+  // Chrome 125+: handle-based API gives direct localStorage access
+  try {
+    const handle = await document.requestStorageAccess({ localStorage: true });
+    const raw = handle.localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.state?.stores?.length > 0) {
+        useStoreManager.setState(parsed.state);
+        return true;
+      }
+    }
+    return false;
+  } catch { /* fall through */ }
+
+  // Safari / older browsers: basic API, then read localStorage directly
+  try {
+    await document.requestStorageAccess();
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.state?.stores?.length > 0) {
+        useStoreManager.setState(parsed.state);
+        return true;
+      }
+    }
+  } catch { /* storage access denied or unavailable */ }
+
+  return false;
+};
 
 const formatDuration = (ms) => {
   if (ms == null || ms <= 0) return "";
@@ -46,7 +88,30 @@ const Embed = () => {
   const activeStore = useStoreManager((s) => s.getActiveStore());
   const needsConfig = !activeStore || !cuttingRoomTamsId;
   const [showConfig, setShowConfig] = useState(needsConfig);
+  const [importing, setImporting] = useState(false);
   const { sources, isLoading: sourcesLoading, error: sourcesError } = useSources();
+
+  // Auto-sync from main app's localStorage if we already have storage access
+  useEffect(() => {
+    if (!needsConfig || !isInIframe) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (await document.hasStorageAccess?.()) {
+          const loaded = await tryLoadSharedConfig();
+          if (loaded && !cancelled) setShowConfig(false);
+        }
+      } catch { /* ignore */ }
+    })();
+    return () => { cancelled = true; };
+  }, [needsConfig]);
+
+  const handleImportConfig = async () => {
+    setImporting(true);
+    const loaded = await tryLoadSharedConfig();
+    if (loaded) setShowConfig(false);
+    setImporting(false);
+  };
   const { flows, isLoading: flowsLoading, error: flowsError } = useFlowsWithTimerange();
 
   const enrichedSources = useMemo(() => {
@@ -133,6 +198,18 @@ const Embed = () => {
             </button>
           )}
         </div>
+        {isInIframe && needsConfig && (
+          <div className="embed-import-section">
+            <button
+              className="embed-import-btn"
+              onClick={handleImportConfig}
+              disabled={importing}
+            >
+              {importing ? "Loading..." : "Load config from main app"}
+            </button>
+            <span className="embed-import-hint">or configure manually below</span>
+          </div>
+        )}
         <StoreManager />
       </div>
     );
