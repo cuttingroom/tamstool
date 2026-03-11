@@ -68,9 +68,12 @@ const Tags = ({ entityType, entity }) => {
 
   const { items, collectionProps } = useCollection(
     entity.tags
-      ? Object.entries(entity.tags).map(([key, value]) => ({ key, value }))
+      ? Object.entries(entity.tags).map(([key, value]) => ({
+          key,
+          value: [value].flat().join(","),
+        }))
       : [],
-    { sorting: {} }
+    { sorting: {} },
   );
 
   return (
@@ -85,7 +88,12 @@ const Tags = ({ entityType, entity }) => {
             contentDensity="compact"
             items={items}
             submitEdit={async (item, _, newValue) => {
-              await update({ name: item.key, value: newValue });
+              await update({
+                name: item.key,
+                value: newValue.includes(",")
+                  ? newValue.split(",").map((s) => s.trim())
+                  : newValue,
+              });
             }}
           />
         ) : (

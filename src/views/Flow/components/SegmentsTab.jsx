@@ -38,6 +38,11 @@ const SegmentsTab = ({ flowId }) => {
       cell: (item) => item.last_duration,
     },
     {
+      id: "object_timerange",
+      header: "Object Timerange",
+      cell: (item) => item.object_timerange,
+    },
+    {
       id: "sample_offset",
       header: "Sample Offset",
       cell: (item) => item.sample_offset,

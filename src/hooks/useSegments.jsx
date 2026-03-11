@@ -7,7 +7,7 @@ export const useLastN = (flowId, n) => {
   const { data, mutate, error, isLoading, isValidating } = useSWR(
     `/flows/${flowId}/segments`,
     (path) =>
-      paginationFetcher(`${path}?accept_get_urls=&reverse_order=true`, n, api),
+      paginationFetcher(`${path}?accept_get_urls=&reverse_order=true&include_object_timerange=true`, n, api),
     {
       refreshInterval: 3000,
     }
