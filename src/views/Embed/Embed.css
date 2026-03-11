@@ -71,6 +71,29 @@
   padding: 8px;
 }
 
+/* Force Cloudscape text to white inside the dark embed config */
+.embed-config h2,
+.embed-config h3,
+.embed-config th,
+.embed-config td,
+.embed-config label,
+.embed-config span,
+.embed-config p,
+.embed-config b,
+.embed-config [class*="header"],
+.embed-config [class*="label"],
+.embed-config [class*="description"],
+.embed-config [class*="content"],
+.embed-config [class*="cell"],
+.embed-config [class*="title"] {
+  color: #e9ecef !important;
+}
+
+.embed-config [class*="description"],
+.embed-config [class*="secondary"] {
+  color: #8c9bab !important;
+}
+
 .embed-import-section {
   display: flex;
   align-items: center;
