@@ -269,12 +269,13 @@ const Embed = () => {
 
   const enrichedSources = useMemo(() => {
     return displayedSources.map((source) => {
-      const details = flowDetails?.get(source.id) || {};
+      const details = flowDetails?.get(source.id);
       return {
         ...source,
-        isGrowing: details.isGrowing || false,
-        durationMs: details.durationMs || null,
-        fps: details.fps || null,
+        isGrowing: details?.isGrowing ?? false,
+        durationMs: details?.durationMs ?? null,
+        fps: details?.fps ?? null,
+        detailsLoaded: !!details,
       };
     });
   }, [displayedSources, flowDetails]);
@@ -353,7 +354,7 @@ const Embed = () => {
         {enrichedSources.map((source) => (
           <div key={source.id} className="embed-row">
             <div className="embed-row-info">
-              {source.isGrowing && <span className="embed-live-dot" title="Recording in progress" />}
+              {source.detailsLoaded && source.isGrowing && <span className="embed-live-dot" title="Recording in progress" />}
               <span className="embed-row-label" title={source.label || source.id}>
                 {source.label || source.id}
               </span>
@@ -364,7 +365,7 @@ const Embed = () => {
                 )}
               </span>
             </div>
-            {source.isGrowing ? (
+            {source.detailsLoaded && source.isGrowing ? (
               <span className="embed-row-duration embed-row-live">LIVE</span>
             ) : source.durationMs > 0 ? (
               <span className="embed-row-duration">{formatDuration(source.durationMs)}</span>
