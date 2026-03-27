@@ -91,26 +91,30 @@ const useSourceFlowDetails = (displayedSources) => {
     [displayedSources]
   );
 
-  // Step 1: Resolve video flow ID + fps per source (fetched once, not polled)
+  // Step 1: Resolve video flow ID + fps per source (only fetch new ones)
+  const flowMapRef = useRef(new Map());
+
   const { data: flowMap } = useSWR(
     api.endpoint && sourceIds ? [api.endpoint, "flow-map", sourceIds] : null,
     async () => {
-      const results = new Map();
-      await Promise.all(
-        displayedSources.map(async (source) => {
-          try {
-            const videoSubSource = source.source_collection?.find((s) => s.role === "video");
-            const videoSourceId = videoSubSource?.id || source.id;
-            const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
-            const flow = listRes.data?.[0];
-            if (!flow) return;
-            const fr = flow.essence_parameters?.frame_rate;
-            const fps = fr?.numerator ? fr.numerator / (fr.denominator || 1) : null;
-            results.set(source.id, { flowId: flow.id, fps });
-          } catch { /* skip */ }
-        })
-      );
-      return results;
+      const newSources = displayedSources.filter((s) => !flowMapRef.current.has(s.id));
+      if (newSources.length > 0) {
+        await Promise.all(
+          newSources.map(async (source) => {
+            try {
+              const videoSubSource = source.source_collection?.find((s) => s.role === "video");
+              const videoSourceId = videoSubSource?.id || source.id;
+              const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
+              const flow = listRes.data?.[0];
+              if (!flow) return;
+              const fr = flow.essence_parameters?.frame_rate;
+              const fps = fr?.numerator ? fr.numerator / (fr.denominator || 1) : null;
+              flowMapRef.current.set(source.id, { flowId: flow.id, fps });
+            } catch { /* skip */ }
+          })
+        );
+      }
+      return new Map(flowMapRef.current);
     },
     { revalidateOnFocus: false, revalidateIfStale: false }
   );
