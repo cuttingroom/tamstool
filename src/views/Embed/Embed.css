@@ -212,6 +212,11 @@
   white-space: nowrap;
 }
 
+.embed-row-live {
+  color: #ff4444;
+  font-weight: 600;
+}
+
 .embed-row-fps {
   margin-left: 6px;
   color: #8c9bab;

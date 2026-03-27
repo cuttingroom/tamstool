@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useApi } from "@/hooks/useApi";
 import { useSources } from "@/hooks/useSources";
@@ -115,38 +115,55 @@ const useSourceFlowDetails = (displayedSources) => {
     { revalidateOnFocus: false, revalidateIfStale: false }
   );
 
-  // Step 2: Poll only timerange for the resolved flow IDs (every 5s)
-  const flowIds = useMemo(() => {
-    if (!flowMap) return "";
-    return [...flowMap.values()].map((v) => v.flowId).sort().join(",");
-  }, [flowMap]);
+  // Step 2: Poll timerange only for flows that are still open (growing or unknown)
+  const closedRef = useRef(new Map()); // sourceId → timerange string (won't change)
 
-  const { data: timeranges, isLoading } = useSWR(
-    api.endpoint && flowIds ? [api.endpoint, "flow-timeranges", flowIds] : null,
+  // Identify which sources still need polling
+  const openSourceIds = useMemo(() => {
+    if (!flowMap) return [];
+    return [...flowMap.keys()].filter((id) => !closedRef.current.has(id));
+  }, [flowMap, closedRef.current.size]);
+
+  const pollKey = useMemo(() => {
+    if (!openSourceIds.length) return "";
+    return openSourceIds.sort().join(",");
+  }, [openSourceIds]);
+
+  const { data: freshTimeranges, isLoading } = useSWR(
+    api.endpoint && flowMap && pollKey ? [api.endpoint, "flow-timeranges", pollKey] : null,
     async () => {
       const results = new Map();
       await Promise.all(
-        [...flowMap.entries()].map(async ([sourceId, { flowId }]) => {
+        openSourceIds.map(async (sourceId) => {
+          const entry = flowMap.get(sourceId);
+          if (!entry) return;
           try {
-            const res = await api.get(`/flows/${flowId}?include_timerange=true`);
+            const res = await api.get(`/flows/${entry.flowId}?include_timerange=true`);
             const tr = res.data?.timerange;
-            if (tr) results.set(sourceId, tr);
+            if (tr) {
+              results.set(sourceId, tr);
+              // If closed (has both start and end), cache it permanently
+              const parsed = parseTimerange(tr);
+              if (parsed.start !== null && parsed.end !== null) {
+                closedRef.current.set(sourceId, tr);
+              }
+            }
           } catch { /* skip */ }
         })
       );
       return results;
     },
-    { refreshInterval: 5000 }
+    { refreshInterval: openSourceIds.length > 0 ? 5000 : 0 }
   );
 
-  // Combine flow map (fps) + timeranges (duration/growing) into one result
+  // Combine: closed (cached) + fresh (just polled) timeranges
   const flowDetails = useMemo(() => {
     if (!flowMap) return null;
     const combined = new Map();
     for (const [sourceId, { fps }] of flowMap) {
       let isGrowing = false;
       let durationMs = null;
-      const tr = timeranges?.get(sourceId);
+      const tr = closedRef.current.get(sourceId) || freshTimeranges?.get(sourceId);
       if (tr) {
         const parsed = parseTimerange(tr);
         if (parsed.start !== null && parsed.end === null) {
@@ -159,7 +176,7 @@ const useSourceFlowDetails = (displayedSources) => {
       combined.set(sourceId, { fps, isGrowing, durationMs });
     }
     return combined;
-  }, [flowMap, timeranges]);
+  }, [flowMap, freshTimeranges, closedRef.current.size]);
 
   return { flowDetails, isLoading };
 };
@@ -312,9 +329,11 @@ const Embed = () => {
                 )}
               </span>
             </div>
-            {source.durationMs > 0 && (
+            {source.isGrowing ? (
+              <span className="embed-row-duration embed-row-live">LIVE</span>
+            ) : source.durationMs > 0 ? (
               <span className="embed-row-duration">{formatDuration(source.durationMs)}</span>
-            )}
+            ) : null}
             <button className="embed-open-btn" onClick={() => handleOpen(source)}>
               Open
             </button>
