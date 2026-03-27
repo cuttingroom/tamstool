@@ -4,7 +4,6 @@ import { useApi } from "@/hooks/useApi";
 import { useSources } from "@/hooks/useSources";
 import useStoreManager from "@/stores/useStoreManager";
 import StoreManager from "@/views/StoreManager";
-import paginationFetcher from "@/utils/paginationFetcher";
 import { parseTimerange } from "@/utils/timerange";
 import "./Embed.css";
 
@@ -80,14 +79,66 @@ const formatDate = (dateStr) => {
   });
 };
 
-const useFlows = () => {
+/**
+ * For each displayed source, find its video source ID (from source_collection
+ * or the source itself if it's a video), then fetch one video flow to get
+ * essence_parameters (fps) and timerange (duration / growing).
+ */
+const useSourceFlowDetails = (displayedSources) => {
   const api = useApi();
-  const { data, error, isLoading } = useSWR(
-    api.endpoint ? [api.endpoint, "/flows?limit=300"] : null,
-    ([, path]) => paginationFetcher(path, null, api),
-    { refreshInterval: 3000 }
+
+  // Build a stable cache key from source IDs
+  const sourceIds = useMemo(
+    () => displayedSources.map((s) => s.id).sort().join(","),
+    [displayedSources]
   );
-  return { flows: data, error, isLoading };
+
+  const { data, error, isLoading } = useSWR(
+    api.endpoint && sourceIds ? [api.endpoint, "source-flow-details", sourceIds] : null,
+    async () => {
+      const results = new Map();
+      await Promise.all(
+        displayedSources.map(async (source) => {
+          try {
+            // Find the video sub-source ID
+            const videoSubSource = source.source_collection?.find((s) => s.role === "video");
+            const videoSourceId = videoSubSource?.id || source.id;
+
+            // Get one flow for this video source
+            const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
+            const flow = listRes.data?.[0];
+            if (!flow) return;
+
+            // Extract fps from essence_parameters
+            const fr = flow.essence_parameters?.frame_rate;
+            const fps = fr?.numerator ? fr.numerator / (fr.denominator || 1) : null;
+
+            // Fetch the same flow with include_timerange for duration
+            const detailRes = await api.get(`/flows/${flow.id}?include_timerange=true`);
+            const timerange = detailRes.data?.timerange;
+
+            let isGrowing = false;
+            let durationMs = null;
+            if (timerange) {
+              const parsed = parseTimerange(timerange);
+              if (parsed.start !== null && parsed.end === null) {
+                isGrowing = true;
+                durationMs = Number(BigInt(Date.now()) - parsed.start / NANOS_PER_MS);
+              } else if (parsed.start !== null && parsed.end !== null) {
+                durationMs = Number((parsed.end - parsed.start) / NANOS_PER_MS);
+              }
+            }
+
+            results.set(source.id, { fps, isGrowing, durationMs });
+          } catch { /* skip failed sources */ }
+        })
+      );
+      return results;
+    },
+    { refreshInterval: 5000 }
+  );
+
+  return { flowDetails: data, error, isLoading };
 };
 
 const Embed = () => {
@@ -119,128 +170,39 @@ const Embed = () => {
     if (loaded) setShowConfig(false);
     setImporting(false);
   };
-  const { flows, isLoading: flowsLoading, error: flowsError } = useFlows();
-  const api = useApi();
 
-  // Build flow maps and per-source fps from the flow list (no timerange on list endpoint)
-  const { sourceData, representativeFlowIds } = useMemo(() => {
-    if (!sources || !flows) return { sourceData: new Map(), representativeFlowIds: [] };
-
-    const flowsById = new Map();
-    const flowsBySource = new Map();
-    for (const flow of flows) {
-      flowsById.set(flow.id, flow);
-      if (!flow.source_id) continue;
-      if (!flowsBySource.has(flow.source_id)) {
-        flowsBySource.set(flow.source_id, []);
-      }
-      flowsBySource.get(flow.source_id).push(flow);
-    }
-
+  // Filter to displayable sources (not collected by a multi-source)
+  const displayedSources = useMemo(() => {
+    if (!sources) return [];
     const collectedIds = new Set();
     for (const source of sources) {
       if (source.collected_by?.length) {
         collectedIds.add(source.id);
       }
     }
-
-    const getAllFlows = (sourceId) => {
-      const direct = flowsBySource.get(sourceId) || [];
-      const all = [...direct];
-      for (const flow of direct) {
-        if (flow.flow_collection) {
-          for (const ref of flow.flow_collection) {
-            const child = flowsById.get(ref.id);
-            if (child) all.push(child);
-          }
-        }
-      }
-      return all;
-    };
-
-    const data = new Map();
-    const repIds = [];
-    for (const source of sources) {
-      if (collectedIds.has(source.id)) continue;
-      const allFlows = getAllFlows(source.id);
-      let fps = null;
-      let repFlowId = null;
-      for (const flow of allFlows) {
-        const fr = flow.essence_parameters?.frame_rate;
-        if (!fps && fr?.numerator) {
-          fps = fr.numerator / (fr.denominator || 1);
-        }
-        if (!repFlowId) repFlowId = flow.id;
-      }
-      data.set(source.id, { fps, repFlowId });
-      if (repFlowId) repIds.push(repFlowId);
-    }
-    return { sourceData: data, representativeFlowIds: repIds };
-  }, [sources, flows]);
-
-  // Fetch timerange for representative flows individually
-  const { data: flowTimeranges } = useSWR(
-    api.endpoint && representativeFlowIds.length > 0
-      ? [api.endpoint, "flow-timeranges", ...representativeFlowIds]
-      : null,
-    async () => {
-      const results = new Map();
-      await Promise.all(
-        representativeFlowIds.map(async (id) => {
-          try {
-            const res = await api.get(`/flows/${id}?include_timerange=true`);
-            if (res.data?.timerange) {
-              results.set(id, res.data.timerange);
-            }
-          } catch { /* skip */ }
-        })
-      );
-      return results;
-    },
-    { refreshInterval: 5000 }
-  );
-
-  const enrichedSources = useMemo(() => {
-    if (!sources || !flows) return [];
-
-    const collectedIds = new Set();
-    for (const source of sources) {
-      if (source.collected_by?.length) {
-        collectedIds.add(source.id);
-      }
-    }
-
     return sources
       .filter((source) => !collectedIds.has(source.id))
-      .map((source) => {
-        const sd = sourceData.get(source.id) || {};
-        let isGrowing = false;
-        let durationMs = null;
-
-        const tr = sd.repFlowId && flowTimeranges?.get(sd.repFlowId);
-        if (tr) {
-          const parsed = parseTimerange(tr);
-          if (parsed.start !== null && parsed.end === null) {
-            isGrowing = true;
-            durationMs = Number(BigInt(Date.now()) - parsed.start / NANOS_PER_MS);
-          } else if (parsed.start !== null && parsed.end !== null) {
-            durationMs = Number((parsed.end - parsed.start) / NANOS_PER_MS);
-          }
-        }
-
-        return {
-          ...source,
-          isGrowing,
-          durationMs,
-          fps: sd.fps || null,
-        };
-      })
       .sort((a, b) => {
         const da = a.created ? new Date(a.created) : new Date(0);
         const db = b.created ? new Date(b.created) : new Date(0);
         return db - da;
       });
-  }, [sources, flows, sourceData, flowTimeranges]);
+  }, [sources]);
+
+  // Fetch flow details (fps, duration, growing) for each displayed source
+  const { flowDetails, isLoading: detailsLoading } = useSourceFlowDetails(displayedSources);
+
+  const enrichedSources = useMemo(() => {
+    return displayedSources.map((source) => {
+      const details = flowDetails?.get(source.id) || {};
+      return {
+        ...source,
+        isGrowing: details.isGrowing || false,
+        durationMs: details.durationMs || null,
+        fps: details.fps || null,
+      };
+    });
+  }, [displayedSources, flowDetails]);
 
   const handleOpen = (source) => {
     const crl = `crl://tams/${cuttingRoomTamsId}/${source.id}`;
@@ -258,8 +220,8 @@ const Embed = () => {
     window.parent.postMessage(message, "*");
   };
 
-  const isLoading = sourcesLoading || flowsLoading;
-  const error = sourcesError || flowsError;
+  const isLoading = sourcesLoading;
+  const error = sourcesError;
 
   if (showConfig) {
     return (
@@ -299,7 +261,7 @@ const Embed = () => {
           {activeStore?.name || "TAMS Sources"}
         </span>
         <div className="embed-header-right">
-          {isLoading && <span className="embed-loading">Loading...</span>}
+          {(isLoading || detailsLoading) && <span className="embed-loading">Loading...</span>}
           <button
             className="embed-config-btn"
             onClick={() => setShowConfig(true)}
