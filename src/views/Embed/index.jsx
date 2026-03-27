@@ -93,18 +93,16 @@ const useSourceFlowDetails = (displayedSources) => {
     [displayedSources]
   );
 
-  // Step 1: Resolve video flow per source — fps + growing status from list endpoint.
-  // Re-poll every 5s so we detect when a growing flow becomes closed.
-  const flowInfoRef = useRef(new Map()); // sourceId → { flowId, fps, isGrowing }
+  // Closed sources are cached permanently — never re-fetched
+  const closedRef = useRef(new Map()); // sourceId → { fps, isGrowing: false, durationMs }
 
-  const { data: flowInfo } = useSWR(
-    api.endpoint && sourceIds ? [api.endpoint, "flow-info", sourceIds] : null,
+  // Single SWR: for sources not in closedRef, fetch flow list (fps + growing)
+  // and timerange (duration). Growing sources are re-fetched every 5s.
+  const { data: flowDetails, isLoading } = useSWR(
+    api.endpoint && sourceIds ? [api.endpoint, "flow-details", sourceIds] : null,
     async () => {
-      // Only fetch sources we haven't seen, or that were still growing
-      const toFetch = displayedSources.filter((s) => {
-        const cached = flowInfoRef.current.get(s.id);
-        return !cached || cached.isGrowing;
-      });
+      const fresh = new Map();
+      const toFetch = displayedSources.filter((s) => !closedRef.current.has(s.id));
       if (toFetch.length > 0) {
         await Promise.all(
           toFetch.map(async (source) => {
@@ -114,104 +112,41 @@ const useSourceFlowDetails = (displayedSources) => {
               const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
               const flow = listRes.data?.[0];
               if (!flow) return;
+
               const fr = flow.essence_parameters?.frame_rate;
               const fps = fr?.numerator ? fr.numerator / (fr.denominator || 1) : null;
               const isGrowing = !flow.metadata_updated;
-              flowInfoRef.current.set(source.id, { flowId: flow.id, fps, isGrowing });
+
+              let durationMs = null;
+              const detailRes = await api.get(`/flows/${flow.id}?include_timerange=true`);
+              const tr = detailRes.data?.timerange;
+              if (tr) {
+                const parsed = parseTimerange(tr);
+                if (parsed.start !== null && parsed.end !== null) {
+                  durationMs = Number((parsed.end - parsed.start) / NANOS_PER_MS);
+                }
+              }
+
+              const result = { fps, isGrowing, durationMs };
+              fresh.set(source.id, result);
+
+              if (!isGrowing) {
+                closedRef.current.set(source.id, result);
+              }
             } catch { /* skip */ }
           })
         );
       }
-      return new Map(flowInfoRef.current);
+
+      // Merge: closed cache (permanent) + fresh results (growing/new)
+      const combined = new Map(closedRef.current);
+      for (const [id, val] of fresh) {
+        combined.set(id, val);
+      }
+      return combined;
     },
     { refreshInterval: 5000 }
   );
-
-  // Step 2: Fetch duration via include_timerange — only for flows we haven't cached yet.
-  const durationRef = useRef(new Map()); // sourceId → durationMs
-
-  const needDuration = useMemo(() => {
-    if (!flowInfo) return [];
-    return [...flowInfo.keys()].filter((id) => !durationRef.current.has(id));
-  }, [flowInfo, durationRef.current.size]);
-
-  const durationKey = useMemo(() => {
-    if (!needDuration.length) return "";
-    return needDuration.sort().join(",");
-  }, [needDuration]);
-
-  const { data: durations, isLoading } = useSWR(
-    api.endpoint && flowInfo && durationKey ? [api.endpoint, "flow-durations", durationKey] : null,
-    async () => {
-      await Promise.all(
-        needDuration.map(async (sourceId) => {
-          const entry = flowInfo.get(sourceId);
-          if (!entry) return;
-          try {
-            const res = await api.get(`/flows/${entry.flowId}?include_timerange=true`);
-            const tr = res.data?.timerange;
-            if (!tr) return;
-            const parsed = parseTimerange(tr);
-            if (parsed.start !== null && parsed.end !== null) {
-              const ms = Number((parsed.end - parsed.start) / NANOS_PER_MS);
-              // Only cache duration for closed flows
-              if (!entry.isGrowing) {
-                durationRef.current.set(sourceId, ms);
-              }
-              return; // duration is in durationRef or freshly computed
-            }
-          } catch { /* skip */ }
-        })
-      );
-      // Return a snapshot so useMemo reacts
-      return new Map(durationRef.current);
-    },
-    { revalidateOnFocus: false, revalidateIfStale: false }
-  );
-
-  // For growing flows, we need to re-fetch duration each poll
-  const growingIds = useMemo(() => {
-    if (!flowInfo) return [];
-    return [...flowInfo.entries()].filter(([, v]) => v.isGrowing).map(([id]) => id);
-  }, [flowInfo]);
-
-  const growingKey = useMemo(() => growingIds.sort().join(","), [growingIds]);
-
-  const { data: growingDurations } = useSWR(
-    api.endpoint && flowInfo && growingKey ? [api.endpoint, "growing-durations", growingKey] : null,
-    async () => {
-      const results = new Map();
-      await Promise.all(
-        growingIds.map(async (sourceId) => {
-          const entry = flowInfo.get(sourceId);
-          if (!entry) return;
-          try {
-            const res = await api.get(`/flows/${entry.flowId}?include_timerange=true`);
-            const tr = res.data?.timerange;
-            if (!tr) return;
-            const parsed = parseTimerange(tr);
-            if (parsed.start !== null && parsed.end !== null) {
-              results.set(sourceId, Number((parsed.end - parsed.start) / NANOS_PER_MS));
-            }
-          } catch { /* skip */ }
-        })
-      );
-      return results;
-    },
-    { refreshInterval: growingIds.length > 0 ? 5000 : 0 }
-  );
-
-  const flowDetails = useMemo(() => {
-    if (!flowInfo) return null;
-    const combined = new Map();
-    for (const [sourceId, { fps, isGrowing }] of flowInfo) {
-      const durationMs = isGrowing
-        ? growingDurations?.get(sourceId) ?? null
-        : durationRef.current.get(sourceId) ?? null;
-      combined.set(sourceId, { fps, isGrowing, durationMs });
-    }
-    return combined;
-  }, [flowInfo, durations, growingDurations]);
 
   return { flowDetails, isLoading };
 };
