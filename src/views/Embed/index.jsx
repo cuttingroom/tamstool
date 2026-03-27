@@ -62,6 +62,13 @@ const formatDuration = (ms) => {
   return `${m}:${String(s).padStart(2, "0")}`;
 };
 
+const formatFps = (fps) => {
+  if (fps == null || fps <= 0) return "";
+  const rounded = Math.round(fps * 100) / 100;
+  const str = rounded % 1 === 0 ? String(rounded) : rounded.toFixed(2).replace(/0+$/, "");
+  return `${str}fps`;
+};
+
 const formatDate = (dateStr) => {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -140,12 +147,20 @@ const Embed = () => {
         const sourceFlows = flowsBySource.get(source.id) || [];
         let isGrowing = false;
         let durationMs = null;
+        let fps = null;
 
         for (const flow of sourceFlows) {
+          if (!fps && flow.grain_rate?.numerator && flow.grain_rate?.denominator) {
+            fps = flow.grain_rate.numerator / flow.grain_rate.denominator;
+          }
           if (!flow.timerange) continue;
           const parsed = parseTimerange(flow.timerange);
           if (parsed.start !== null && parsed.end === null) {
             isGrowing = true;
+            const ms = Number(BigInt(Date.now()) - parsed.start / NANOS_PER_MS);
+            if (durationMs === null || ms > durationMs) {
+              durationMs = ms;
+            }
           }
           if (parsed.start !== null && parsed.end !== null) {
             const ms = Number((parsed.end - parsed.start) / NANOS_PER_MS);
@@ -159,6 +174,7 @@ const Embed = () => {
           ...source,
           isGrowing,
           durationMs,
+          fps,
         };
       })
       .sort((a, b) => {
@@ -218,7 +234,12 @@ const Embed = () => {
   return (
     <div className="embed-container">
       <div className="embed-header">
-        <span className="embed-title">TAMS Sources</span>
+        <span className="embed-title">
+          {enrichedSources.some((s) => s.isGrowing) && (
+            <span className="embed-title-dot" />
+          )}
+          TAMS Sources
+        </span>
         <div className="embed-header-right">
           {isLoading && <span className="embed-loading">Loading...</span>}
           <button
@@ -243,11 +264,16 @@ const Embed = () => {
               </span>
               <span className="embed-row-meta">
                 {formatDate(source.created)}
-                {source.durationMs > 0 && (
-                  <span className="embed-row-duration">{formatDuration(source.durationMs)}</span>
-                )}
               </span>
             </div>
+            <span className="embed-row-extras">
+              {source.durationMs > 0 && (
+                <span className="embed-row-duration">{formatDuration(source.durationMs)}</span>
+              )}
+              {source.fps && (
+                <span className="embed-row-fps">{formatFps(source.fps)}</span>
+              )}
+            </span>
             <button className="embed-open-btn" onClick={() => handleOpen(source)}>
               Open
             </button>
