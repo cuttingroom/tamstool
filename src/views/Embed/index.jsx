@@ -80,57 +80,58 @@ const formatDate = (dateStr) => {
 };
 
 /**
- * For each displayed source, find its video source ID (from source_collection
- * or the source itself if it's a video), then fetch one video flow to get
- * essence_parameters (fps) and timerange (duration / growing).
+ * For each displayed source, resolve the video flow ID and fps once,
+ * then poll only timerange every 5 seconds for duration / growing status.
  */
 const useSourceFlowDetails = (displayedSources) => {
   const api = useApi();
 
-  // Build a stable cache key from source IDs
   const sourceIds = useMemo(
     () => displayedSources.map((s) => s.id).sort().join(","),
     [displayedSources]
   );
 
-  const { data, error, isLoading } = useSWR(
-    api.endpoint && sourceIds ? [api.endpoint, "source-flow-details", sourceIds] : null,
+  // Step 1: Resolve video flow ID + fps per source (fetched once, not polled)
+  const { data: flowMap } = useSWR(
+    api.endpoint && sourceIds ? [api.endpoint, "flow-map", sourceIds] : null,
     async () => {
       const results = new Map();
       await Promise.all(
         displayedSources.map(async (source) => {
           try {
-            // Find the video sub-source ID
             const videoSubSource = source.source_collection?.find((s) => s.role === "video");
             const videoSourceId = videoSubSource?.id || source.id;
-
-            // Get one flow for this video source
             const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
             const flow = listRes.data?.[0];
             if (!flow) return;
-
-            // Extract fps from essence_parameters
             const fr = flow.essence_parameters?.frame_rate;
             const fps = fr?.numerator ? fr.numerator / (fr.denominator || 1) : null;
+            results.set(source.id, { flowId: flow.id, fps });
+          } catch { /* skip */ }
+        })
+      );
+      return results;
+    },
+    { revalidateOnFocus: false, revalidateIfStale: false }
+  );
 
-            // Fetch the same flow with include_timerange for duration
-            const detailRes = await api.get(`/flows/${flow.id}?include_timerange=true`);
-            const timerange = detailRes.data?.timerange;
+  // Step 2: Poll only timerange for the resolved flow IDs (every 5s)
+  const flowIds = useMemo(() => {
+    if (!flowMap) return "";
+    return [...flowMap.values()].map((v) => v.flowId).sort().join(",");
+  }, [flowMap]);
 
-            let isGrowing = false;
-            let durationMs = null;
-            if (timerange) {
-              const parsed = parseTimerange(timerange);
-              if (parsed.start !== null && parsed.end === null) {
-                isGrowing = true;
-                durationMs = Number(BigInt(Date.now()) - parsed.start / NANOS_PER_MS);
-              } else if (parsed.start !== null && parsed.end !== null) {
-                durationMs = Number((parsed.end - parsed.start) / NANOS_PER_MS);
-              }
-            }
-
-            results.set(source.id, { fps, isGrowing, durationMs });
-          } catch { /* skip failed sources */ }
+  const { data: timeranges, isLoading } = useSWR(
+    api.endpoint && flowIds ? [api.endpoint, "flow-timeranges", flowIds] : null,
+    async () => {
+      const results = new Map();
+      await Promise.all(
+        [...flowMap.entries()].map(async ([sourceId, { flowId }]) => {
+          try {
+            const res = await api.get(`/flows/${flowId}?include_timerange=true`);
+            const tr = res.data?.timerange;
+            if (tr) results.set(sourceId, tr);
+          } catch { /* skip */ }
         })
       );
       return results;
@@ -138,7 +139,29 @@ const useSourceFlowDetails = (displayedSources) => {
     { refreshInterval: 5000 }
   );
 
-  return { flowDetails: data, error, isLoading };
+  // Combine flow map (fps) + timeranges (duration/growing) into one result
+  const flowDetails = useMemo(() => {
+    if (!flowMap) return null;
+    const combined = new Map();
+    for (const [sourceId, { fps }] of flowMap) {
+      let isGrowing = false;
+      let durationMs = null;
+      const tr = timeranges?.get(sourceId);
+      if (tr) {
+        const parsed = parseTimerange(tr);
+        if (parsed.start !== null && parsed.end === null) {
+          isGrowing = true;
+          durationMs = Number(BigInt(Date.now()) - parsed.start / NANOS_PER_MS);
+        } else if (parsed.start !== null && parsed.end !== null) {
+          durationMs = Number((parsed.end - parsed.start) / NANOS_PER_MS);
+        }
+      }
+      combined.set(sourceId, { fps, isGrowing, durationMs });
+    }
+    return combined;
+  }, [flowMap, timeranges]);
+
+  return { flowDetails, isLoading };
 };
 
 const Embed = () => {
@@ -284,16 +307,14 @@ const Embed = () => {
               </span>
               <span className="embed-row-meta">
                 {formatDate(source.created)}
+                {source.fps && (
+                  <span className="embed-row-fps">{formatFps(source.fps)}</span>
+                )}
               </span>
             </div>
-            <span className="embed-row-extras">
-              {source.durationMs > 0 && (
-                <span className="embed-row-duration">{formatDuration(source.durationMs)}</span>
-              )}
-              {source.fps && (
-                <span className="embed-row-fps">{formatFps(source.fps)}</span>
-              )}
-            </span>
+            {source.durationMs > 0 && (
+              <span className="embed-row-duration">{formatDuration(source.durationMs)}</span>
+            )}
             <button className="embed-open-btn" onClick={() => handleOpen(source)}>
               Open
             </button>

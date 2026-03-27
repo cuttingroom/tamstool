@@ -205,24 +205,16 @@
   white-space: nowrap;
 }
 
-.embed-row-extras {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  font-size: 11px;
-  color: #8c9bab;
-}
-
 .embed-row-duration {
   flex-shrink: 0;
+  font-size: 11px;
+  color: #8c9bab;
+  white-space: nowrap;
 }
 
 .embed-row-fps {
-  flex-shrink: 0;
+  margin-left: 6px;
+  color: #8c9bab;
 }
 
 .embed-open-btn {
@@ -253,7 +245,7 @@
 
 /* Narrow: hide extras first, then meta */
 @media (max-width: 360px) {
-  .embed-row-extras {
+  .embed-row-duration {
     display: none;
   }
 }
