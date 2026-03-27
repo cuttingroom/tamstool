@@ -80,10 +80,10 @@ const formatDate = (dateStr) => {
   });
 };
 
-const useFlowsWithTimerange = () => {
+const useFlows = () => {
   const api = useApi();
   const { data, error, isLoading } = useSWR(
-    api.endpoint ? [api.endpoint, "/flows?limit=300&include_timerange=true"] : null,
+    api.endpoint ? [api.endpoint, "/flows?limit=300"] : null,
     ([, path]) => paginationFetcher(path, null, api),
     { refreshInterval: 3000 }
   );
@@ -119,16 +119,12 @@ const Embed = () => {
     if (loaded) setShowConfig(false);
     setImporting(false);
   };
-  const { flows, isLoading: flowsLoading, error: flowsError } = useFlowsWithTimerange();
+  const { flows, isLoading: flowsLoading, error: flowsError } = useFlows();
+  const api = useApi();
 
-  const enrichedSources = useMemo(() => {
-    if (!sources || !flows) return [];
-
-    if (flows.length > 0) {
-      const sample = flows[0];
-      console.log("embed flow sample keys:", Object.keys(sample));
-      console.log("embed flow sample timerange:", sample.timerange, "format:", sample.format);
-    }
+  // Build flow maps and per-source fps from the flow list (no timerange on list endpoint)
+  const { sourceData, representativeFlowIds } = useMemo(() => {
+    if (!sources || !flows) return { sourceData: new Map(), representativeFlowIds: [] };
 
     const flowsById = new Map();
     const flowsBySource = new Map();
@@ -141,7 +137,6 @@ const Embed = () => {
       flowsBySource.get(flow.source_id).push(flow);
     }
 
-    // Build set of source IDs that are collected by a multi-source
     const collectedIds = new Set();
     for (const source of sources) {
       if (source.collected_by?.length) {
@@ -149,7 +144,6 @@ const Embed = () => {
       }
     }
 
-    // Collect all flows for a source, including child flows from flow_collection
     const getAllFlows = (sourceId) => {
       const direct = flowsBySource.get(sourceId) || [];
       const all = [...direct];
@@ -164,33 +158,73 @@ const Embed = () => {
       return all;
     };
 
+    const data = new Map();
+    const repIds = [];
+    for (const source of sources) {
+      if (collectedIds.has(source.id)) continue;
+      const allFlows = getAllFlows(source.id);
+      let fps = null;
+      let repFlowId = null;
+      for (const flow of allFlows) {
+        const fr = flow.essence_parameters?.frame_rate;
+        if (!fps && fr?.numerator) {
+          fps = fr.numerator / (fr.denominator || 1);
+        }
+        if (!repFlowId) repFlowId = flow.id;
+      }
+      data.set(source.id, { fps, repFlowId });
+      if (repFlowId) repIds.push(repFlowId);
+    }
+    return { sourceData: data, representativeFlowIds: repIds };
+  }, [sources, flows]);
+
+  // Fetch timerange for representative flows individually
+  const { data: flowTimeranges } = useSWR(
+    api.endpoint && representativeFlowIds.length > 0
+      ? [api.endpoint, "flow-timeranges", ...representativeFlowIds]
+      : null,
+    async () => {
+      const results = new Map();
+      await Promise.all(
+        representativeFlowIds.map(async (id) => {
+          try {
+            const res = await api.get(`/flows/${id}?include_timerange=true`);
+            if (res.data?.timerange) {
+              results.set(id, res.data.timerange);
+            }
+          } catch { /* skip */ }
+        })
+      );
+      return results;
+    },
+    { refreshInterval: 5000 }
+  );
+
+  const enrichedSources = useMemo(() => {
+    if (!sources || !flows) return [];
+
+    const collectedIds = new Set();
+    for (const source of sources) {
+      if (source.collected_by?.length) {
+        collectedIds.add(source.id);
+      }
+    }
+
     return sources
       .filter((source) => !collectedIds.has(source.id))
       .map((source) => {
-        const allFlows = getAllFlows(source.id);
+        const sd = sourceData.get(source.id) || {};
         let isGrowing = false;
         let durationMs = null;
-        let fps = null;
 
-        for (const flow of allFlows) {
-          const fr = flow.essence_parameters?.frame_rate;
-          if (!fps && fr?.numerator) {
-            fps = fr.numerator / (fr.denominator || 1);
-          }
-          if (!flow.timerange) continue;
-          const parsed = parseTimerange(flow.timerange);
+        const tr = sd.repFlowId && flowTimeranges?.get(sd.repFlowId);
+        if (tr) {
+          const parsed = parseTimerange(tr);
           if (parsed.start !== null && parsed.end === null) {
             isGrowing = true;
-            const ms = Number(BigInt(Date.now()) - parsed.start / NANOS_PER_MS);
-            if (durationMs === null || ms > durationMs) {
-              durationMs = ms;
-            }
-          }
-          if (parsed.start !== null && parsed.end !== null) {
-            const ms = Number((parsed.end - parsed.start) / NANOS_PER_MS);
-            if (durationMs === null || ms > durationMs) {
-              durationMs = ms;
-            }
+            durationMs = Number(BigInt(Date.now()) - parsed.start / NANOS_PER_MS);
+          } else if (parsed.start !== null && parsed.end !== null) {
+            durationMs = Number((parsed.end - parsed.start) / NANOS_PER_MS);
           }
         }
 
@@ -198,7 +232,7 @@ const Embed = () => {
           ...source,
           isGrowing,
           durationMs,
-          fps,
+          fps: sd.fps || null,
         };
       })
       .sort((a, b) => {
@@ -206,7 +240,7 @@ const Embed = () => {
         const db = b.created ? new Date(b.created) : new Date(0);
         return db - da;
       });
-  }, [sources, flows]);
+  }, [sources, flows, sourceData, flowTimeranges]);
 
   const handleOpen = (source) => {
     const crl = `crl://tams/${cuttingRoomTamsId}/${source.id}`;
