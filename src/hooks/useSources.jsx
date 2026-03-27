@@ -8,7 +8,7 @@ export const useSources = () => {
     api.endpoint ? [api.endpoint, "/sources?limit=300"] : null,
     ([, path]) => paginationFetcher(path, null, api),
     {
-      refreshInterval: 3000,
+      refreshInterval: 5000,
     }
   );
 
