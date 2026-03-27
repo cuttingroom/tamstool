@@ -119,10 +119,11 @@ const useSourceFlowDetails = (displayedSources) => {
     { revalidateOnFocus: false, revalidateIfStale: false }
   );
 
-  // Step 2: Poll timerange only for flows that are still open (growing or unknown)
-  const closedRef = useRef(new Map()); // sourceId → timerange string (won't change)
+  // Step 2: Poll timerange. A flow is "growing" if segments_updated is recent.
+  // Once a flow stops growing, cache its result and stop polling it.
+  const GROWING_THRESHOLD_MS = 15_000;
+  const closedRef = useRef(new Map()); // sourceId → { timerange, durationMs }
 
-  // Identify which sources still need polling
   const openSourceIds = useMemo(() => {
     if (!flowMap) return [];
     return [...flowMap.keys()].filter((id) => !closedRef.current.has(id));
@@ -133,24 +134,34 @@ const useSourceFlowDetails = (displayedSources) => {
     return openSourceIds.sort().join(",");
   }, [openSourceIds]);
 
-  const { data: freshTimeranges, isLoading } = useSWR(
+  const { data: freshResults, isLoading } = useSWR(
     api.endpoint && flowMap && pollKey ? [api.endpoint, "flow-timeranges", pollKey] : null,
     async () => {
       const results = new Map();
+      const now = Date.now();
       await Promise.all(
         openSourceIds.map(async (sourceId) => {
           const entry = flowMap.get(sourceId);
           if (!entry) return;
           try {
             const res = await api.get(`/flows/${entry.flowId}?include_timerange=true`);
-            const tr = res.data?.timerange;
-            if (tr) {
-              results.set(sourceId, tr);
-              // If closed (has both start and end), cache it permanently
-              const parsed = parseTimerange(tr);
-              if (parsed.start !== null && parsed.end !== null) {
-                closedRef.current.set(sourceId, tr);
-              }
+            const flow = res.data;
+            const tr = flow?.timerange;
+            if (!tr) return;
+
+            const parsed = parseTimerange(tr);
+            const segUpdated = flow.segments_updated ? new Date(flow.segments_updated).getTime() : 0;
+            const isGrowing = (now - segUpdated) < GROWING_THRESHOLD_MS;
+            let durationMs = null;
+            if (parsed.start !== null && parsed.end !== null) {
+              durationMs = Number((parsed.end - parsed.start) / NANOS_PER_MS);
+            }
+
+            results.set(sourceId, { isGrowing, durationMs });
+
+            // Cache closed flows permanently
+            if (!isGrowing) {
+              closedRef.current.set(sourceId, { isGrowing: false, durationMs });
             }
           } catch { /* skip */ }
         })
@@ -160,27 +171,21 @@ const useSourceFlowDetails = (displayedSources) => {
     { refreshInterval: openSourceIds.length > 0 ? 5000 : 0 }
   );
 
-  // Combine: closed (cached) + fresh (just polled) timeranges
   const flowDetails = useMemo(() => {
     if (!flowMap) return null;
     const combined = new Map();
     for (const [sourceId, { fps }] of flowMap) {
-      let isGrowing = false;
-      let durationMs = null;
-      const tr = closedRef.current.get(sourceId) || freshTimeranges?.get(sourceId);
-      if (tr) {
-        const parsed = parseTimerange(tr);
-        if (parsed.start !== null && parsed.end === null) {
-          isGrowing = true;
-          durationMs = Number(BigInt(Date.now()) - parsed.start / NANOS_PER_MS);
-        } else if (parsed.start !== null && parsed.end !== null) {
-          durationMs = Number((parsed.end - parsed.start) / NANOS_PER_MS);
-        }
-      }
-      combined.set(sourceId, { fps, isGrowing, durationMs });
+      const cached = closedRef.current.get(sourceId);
+      const fresh = freshResults?.get(sourceId);
+      const detail = fresh || cached || {};
+      combined.set(sourceId, {
+        fps,
+        isGrowing: detail.isGrowing || false,
+        durationMs: detail.durationMs || null,
+      });
     }
     return combined;
-  }, [flowMap, freshTimeranges, closedRef.current.size]);
+  }, [flowMap, freshResults, closedRef.current.size]);
 
   return { flowDetails, isLoading };
 };
