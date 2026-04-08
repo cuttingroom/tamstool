@@ -103,7 +103,7 @@ const useSourceFlowDetails = (displayedSources) => {
         try {
           const videoSubSource = source.source_collection?.find((s) => s.role === "video");
           const videoSourceId = videoSubSource?.id || source.id;
-          const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
+          const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1&_t=${Date.now()}`);
           const flow = listRes.data?.[0];
           if (!flow) return;
 
