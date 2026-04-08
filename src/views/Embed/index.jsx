@@ -80,9 +80,9 @@ const formatDate = (dateStr) => {
 };
 
 /**
- * For each displayed source, fetch its video flow to get fps and growing status.
- * A flow is "growing" when its flow_status tag is "ingesting".
- * Growing flows are re-polled every 5s; closed flows fetch duration once.
+ * For each displayed source, fetch its video flow to get fps and duration.
+ * Growing status is read from source tags (polled by useSources), not here.
+ * Sources whose flow details have been fetched are cached permanently.
  */
 const useSourceFlowDetails = (displayedSources) => {
   const api = useApi();
@@ -92,16 +92,14 @@ const useSourceFlowDetails = (displayedSources) => {
     [displayedSources]
   );
 
-  // Closed sources are cached permanently — never re-fetched
-  const closedRef = useRef(new Map()); // sourceId → { fps, isGrowing: false, durationMs }
+  // Cached sources — never re-fetched once we have fps + duration
+  const cachedRef = useRef(new Map());
 
-  // Single SWR: for sources not in closedRef, fetch flow list (fps + growing)
-  // and timerange (duration). Growing sources are re-fetched every 5s.
   const { data: flowDetails, isLoading } = useSWR(
     api.endpoint && sourceIds ? [api.endpoint, "flow-details", sourceIds] : null,
     async () => {
       const fresh = new Map();
-      const toFetch = displayedSources.filter((s) => !closedRef.current.has(s.id));
+      const toFetch = displayedSources.filter((s) => !cachedRef.current.has(s.id));
       if (toFetch.length > 0) {
         await Promise.all(
           toFetch.map(async (source) => {
@@ -114,7 +112,7 @@ const useSourceFlowDetails = (displayedSources) => {
 
               const fr = flow.essence_parameters?.frame_rate;
               const fps = fr?.numerator ? fr.numerator / (fr.denominator || 1) : null;
-              const isGrowing = flow.tags?.flow_status?.includes("ingesting") ?? false;
+              const isGrowing = source.tags?.flow_status?.includes("ingesting") ?? false;
 
               let durationMs = null;
               const detailRes = await api.get(`/flows/${flow.id}?include_timerange=true`);
@@ -126,19 +124,19 @@ const useSourceFlowDetails = (displayedSources) => {
                 }
               }
 
-              const result = { fps, isGrowing, durationMs };
+              const result = { fps, durationMs };
               fresh.set(source.id, result);
 
-              if (!isGrowing) {
-                closedRef.current.set(source.id, result);
+              // Cache once we have a duration (recording finished)
+              if (!isGrowing && durationMs > 0) {
+                cachedRef.current.set(source.id, result);
               }
             } catch { /* skip */ }
           })
         );
       }
 
-      // Merge: closed cache (permanent) + fresh results (growing/new)
-      const combined = new Map(closedRef.current);
+      const combined = new Map(cachedRef.current);
       for (const [id, val] of fresh) {
         combined.set(id, val);
       }
@@ -204,9 +202,12 @@ const Embed = () => {
   const enrichedSources = useMemo(() => {
     return displayedSources.map((source) => {
       const details = flowDetails?.get(source.id);
+      // Read growing status from source tags (polled by useSources every 5s)
+      // rather than from individual flow detail calls.
+      const isGrowing = source.tags?.flow_status?.includes("ingesting") ?? false;
       return {
         ...source,
-        isGrowing: details?.isGrowing ?? false,
+        isGrowing,
         durationMs: details?.durationMs ?? null,
         fps: details?.fps ?? null,
         detailsLoaded: !!details,
