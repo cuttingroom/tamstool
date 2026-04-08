@@ -81,7 +81,7 @@ const formatDate = (dateStr) => {
 
 /**
  * For each displayed source, fetch its video flow to get fps and growing status.
- * A flow is "growing" when its flow_status is "ingesting".
+ * A flow is "growing" when its flow_status tag is "ingesting".
  * Growing flows are re-polled every 5s; closed flows fetch duration once.
  */
 const useSourceFlowDetails = (displayedSources) => {
@@ -114,7 +114,7 @@ const useSourceFlowDetails = (displayedSources) => {
 
               const fr = flow.essence_parameters?.frame_rate;
               const fps = fr?.numerator ? fr.numerator / (fr.denominator || 1) : null;
-              const isGrowing = flow.flow_status === "ingesting";
+              const isGrowing = flow.tags?.flow_status?.includes("ingesting") ?? false;
 
               let durationMs = null;
               const detailRes = await api.get(`/flows/${flow.id}?include_timerange=true`);
