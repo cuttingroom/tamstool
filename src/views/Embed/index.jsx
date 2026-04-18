@@ -390,9 +390,11 @@ const Embed = () => {
             ) : source.durationMs > 0 ? (
               <span className="embed-row-duration">{formatDuration(source.durationMs)}</span>
             ) : null}
-            <button className="embed-open-btn" onClick={(e) => handleOpen(source, e)}>
-              {shiftHeld ? "NEW" : "Open"}
-            </button>
+            {source.durationMs > 0 && (
+              <button className="embed-open-btn" onClick={(e) => handleOpen(source, e)}>
+                {shiftHeld ? "NEW" : "Open"}
+              </button>
+            )}
           </div>
         ))}
         {!isLoading && !error && enrichedSources.length === 0 && (
