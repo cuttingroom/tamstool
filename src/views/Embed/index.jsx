@@ -5,6 +5,7 @@ import { useSources } from "@/hooks/useSources";
 import useStoreManager from "@/stores/useStoreManager";
 import StoreManager from "@/views/StoreManager";
 import { parseTimerange } from "@/utils/timerange";
+import { version as appVersion } from "../../../package.json";
 import "./Embed.css";
 
 const NANOS_PER_MS = 1_000_000n;
@@ -323,7 +324,10 @@ const Embed = () => {
     return (
       <div className="embed-container embed-config">
         <div className="embed-header">
-          <span className="embed-title">Store Configuration</span>
+          <span className="embed-title">
+            Store Configuration
+            <span className="embed-version">v{appVersion}</span>
+          </span>
           {!needsConfig && (
             <button className="embed-back-btn" onClick={() => setShowConfig(false)}>
               Back
