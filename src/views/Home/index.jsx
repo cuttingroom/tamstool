@@ -27,6 +27,7 @@ TAMS itself is a [BBC initiative](https://github.com/bbc/tams) for time-addressa
 
 - **Sources** -- Browse all sources in the active TAMS store, with filtering, sorting, and column customisation.
 - **Flows** -- Browse flows, manage timeranges, and view detailed metadata.
+- **Webhooks** -- List, register, update, and delete TAMS webhooks; inspect delivery errors.
 - **Omakase Player** -- Advanced video player with timeline visualisation and markers.
 - **Diagram View** -- Interactive graph of TAMS entity relationships (sources, flows, segments).
 
