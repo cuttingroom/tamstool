@@ -3,3 +3,12 @@
   overflow: visible !important;
   text-overflow: unset !important;
 }
+
+[class*="awsui_top-navigation"] [class*="awsui_title"]::after {
+  content: var(--app-version, "");
+  font-size: 0.65em;
+  font-weight: 400;
+  color: #fff;
+  margin-left: 0.75em;
+  letter-spacing: 0.02em;
+}

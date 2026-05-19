@@ -1,7 +1,7 @@
 {
   "name": "tamstool",
   "private": true,
-  "version": "0.2.0",
+  "version": "4.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
   },
   "dependencies": {
     "@byomakase/omakase-player": "0.25.3",
-    "@byomakase/omakase-react-components": "1.2.3",
+    "@byomakase/omakase-react-components": "1.3.0",
+    "@byomakase/omakase-tams-player": "^1.0.3",
     "@cloudscape-design/collection-hooks": "^1.0.76",
     "@cloudscape-design/components": "^3.0.1108",
     "@cloudscape-design/design-tokens": "^3.0.62",
@@ -19,12 +20,14 @@
     "cytoscape": "^3.33.1",
     "json-stable-stringify": "^1.3.0",
     "luxon": "^3.7.2",
+    "node-webvtt": "^1.9.4",
     "react": "^18.3.1",
     "react-cytoscapejs": "^2.0.0",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.12.0",
     "remark-gfm": "^4.0.1",
+    "rxjs": "^7.8.2",
     "swr": "^2.3.6",
     "zustand": "^5.0.8"
   },

@@ -1,10 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { Mode } from "@cloudscape-design/global-styles";
 import { PAGE_SIZE } from "@/constants";
 
 const usePreferencesStore = create(
   persist(
     (set) => ({
+      mode: Mode.Dark,
+      setMode: (mode) => set({ mode }),
+
       flowsShowHierarchy: true,
       setFlowsShowHierarchy: (hierarchy) =>
         set({ flowsShowHierarchy: hierarchy }),
