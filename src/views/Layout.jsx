@@ -86,7 +86,12 @@ const Layout = () => {
         navigationOpen={navigationOpen}
         onNavigationChange={({ detail }) => setNavigationOpen(detail.open)}
         navigation={
-          <SideNavigation header={navHeader} onFollow={followLink} items={navItems} />
+          <SideNavigation
+            header={navHeader}
+            activeHref={pathname}
+            onFollow={followLink}
+            items={navItems}
+          />
         }
         toolsHide
         content={

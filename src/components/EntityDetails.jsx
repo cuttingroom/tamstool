@@ -1,13 +1,14 @@
 import {
   ColumnLayout,
-  SpaceBetween,
   CopyToClipboard,
+  SpaceBetween,
+  StatusIndicator,
 } from "@cloudscape-design/components";
 
 import { Link } from "react-router-dom";
 import ValueWithLabel from "@/components/ValueWithLabel";
 import EditableField from "@/components/EditableField";
-import { DATE_FORMAT } from "@/constants";
+import { DATE_FORMAT, STATUS_MAPPINGS } from "@/constants";
 import chunkArray from "@/utils/chunkArray";
 import { parseTimerangeDateTime } from "@/utils/timerange";
 
@@ -71,6 +72,12 @@ const EntityDetails = ({ entityType, entity }) => {
     // Handle special cases
     if (label === "source_id") {
       return <Link to={`/sources/${value}`}>{value}</Link>;
+    }
+
+    if (label === "status" && typeof value === "string" && STATUS_MAPPINGS[value]) {
+      return (
+        <StatusIndicator {...STATUS_MAPPINGS[value]}>{value}</StatusIndicator>
+      );
     }
 
     if (typeof value === "boolean") {

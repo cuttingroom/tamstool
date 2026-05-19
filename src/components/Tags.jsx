@@ -1,6 +1,7 @@
 import {
   Button,
   Input,
+  Link,
   SpaceBetween,
   Table,
   TextContent,
@@ -10,6 +11,15 @@ import { useUpdate } from "@/hooks/useTags";
 import TagAddModal from "./TagAddModal";
 import TagDeleteModal from "./TagDeleteModal";
 import { useState } from "react";
+
+const isUrl = (text) => {
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 
 const Tags = ({ entityType, entity, basePath }) => {
   const { update } = useUpdate(entityType, entity.id, basePath);
@@ -39,7 +49,16 @@ const Tags = ({ entityType, entity, basePath }) => {
     {
       id: "value",
       header: "Value",
-      cell: (item) => item.value,
+      cell: (item) => {
+        if (isUrl(item.value)) {
+          return (
+            <Link href={item.value} external>
+              {item.value}
+            </Link>
+          );
+        }
+        return item.value;
+      },
       sortingField: "value",
       editConfig: {
         editingCell: (item, { currentValue, setValue }) => {

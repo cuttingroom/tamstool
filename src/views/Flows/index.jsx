@@ -225,13 +225,13 @@ const Flows = () => {
               direction="horizontal"
               alignItems="center"
             >
-              <FlowActionsButton selectedItems={selectedItems} />
               <Toggle
                 onChange={({ detail }) => setShowHierarchy(detail.checked)}
                 checked={showHierarchy}
               >
                 Hierarchical View
               </Toggle>
+              <FlowActionsButton selectedItems={selectedItems} />
             </SpaceBetween>
           }
         >
