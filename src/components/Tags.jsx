@@ -11,8 +11,8 @@ import TagAddModal from "./TagAddModal";
 import TagDeleteModal from "./TagDeleteModal";
 import { useState } from "react";
 
-const Tags = ({ entityType, entity }) => {
-  const { update } = useUpdate(entityType, entity.id);
+const Tags = ({ entityType, entity, basePath }) => {
+  const { update } = useUpdate(entityType, entity.id, basePath);
   const [modalVisible, setModalVisible] = useState(false);
   const [actionId, setActionId] = useState("");
   const [tagName, setTagName] = useState("");
@@ -111,6 +111,7 @@ const Tags = ({ entityType, entity }) => {
               setModalVisible={setModalVisible}
               entityType={entityType}
               entity={entity}
+              basePath={basePath}
             />
           ),
           delete: (
@@ -120,6 +121,7 @@ const Tags = ({ entityType, entity }) => {
               entityType={entityType}
               entity={entity}
               tagName={tagName}
+              basePath={basePath}
             />
           ),
         }[actionId]

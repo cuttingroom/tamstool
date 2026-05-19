@@ -93,6 +93,8 @@ export const useApi = () => {
     return {
       endpoint,
       get: (path, options = {}) => makeRequest("GET", path, options),
+      post: (path, jsonBody, options = {}) =>
+        makeRequest("POST", path, { ...options, body: jsonBody }),
       put: (path, jsonBody, options = {}) =>
         makeRequest("PUT", path, { ...options, body: jsonBody }),
       del: (path, options = {}) => makeRequest("DELETE", path, options),

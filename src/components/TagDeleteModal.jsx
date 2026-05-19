@@ -9,6 +9,7 @@ import {
 } from "@cloudscape-design/components";
 import { useDelete } from "@/hooks/useTags";
 import { useTagPropagation } from "@/hooks/useTagPropagation";
+import useAlertsStore from "@/stores/useAlertsStore";
 
 const TagDeleteModal = ({
   modalVisible,
@@ -16,19 +17,38 @@ const TagDeleteModal = ({
   entityType,
   entity,
   tagName,
+  basePath,
 }) => {
   const [propagate, setPropagate] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const { del } = useDelete(entityType, entity.id);
+  const { del } = useDelete(entityType, entity.id, basePath);
   const { propagateTagAction } = useTagPropagation();
+  const addAlertItem = useAlertsStore((state) => state.addAlertItem);
+  const delAlertItem = useAlertsStore((state) => state.delAlertItem);
+  const canPropagate = entityType === "flows" || entityType === "sources";
 
   const handleConfirm = async () => {
     setIsLoading(true);
-    await del({ name: tagName });
-    if (propagate) {
-      await propagateTagAction(entityType, entity, tagName, null, "delete");
+    try {
+      await del({ name: tagName });
+      if (propagate && canPropagate) {
+        await propagateTagAction(entityType, entity, tagName, null, "delete");
+      }
+    } catch (error) {
+      const id = crypto.randomUUID();
+      addAlertItem({
+        type: "error",
+        dismissible: true,
+        dismissLabel: "Dismiss message",
+        content: `Failed to delete tag: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
+        id,
+        onDismiss: () => delAlertItem(id),
+      });
+    } finally {
+      handleDismiss();
     }
-    handleDismiss();
   };
 
   const handleDismiss = () => {
@@ -63,12 +83,14 @@ const TagDeleteModal = ({
         <TextContent>
           Are you sure you wish to delete the {tagName} tag?
         </TextContent>
-        <Checkbox
-          checked={propagate}
-          onChange={({ detail }) => setPropagate(detail.checked)}
-        >
-          Propagate
-        </Checkbox>
+        {canPropagate && (
+          <Checkbox
+            checked={propagate}
+            onChange={({ detail }) => setPropagate(detail.checked)}
+          >
+            Propagate
+          </Checkbox>
+        )}
       </SpaceBetween>
     </Modal>
   );

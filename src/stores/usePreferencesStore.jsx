@@ -59,6 +59,27 @@ const usePreferencesStore = create(
       setSourcesPreferences: (preferences) =>
         set({ sourcesPreferences: preferences }),
 
+      webhooksPreferences: {
+        pageSize: PAGE_SIZE,
+        contentDisplay: [
+          { id: "id", visible: true },
+          { id: "url", visible: true },
+          { id: "api_key_name", visible: false },
+          { id: "status", visible: true },
+          { id: "events", visible: true },
+          { id: "flow_ids", visible: false },
+          { id: "source_ids", visible: false },
+          { id: "flow_collected_by_ids", visible: false },
+          { id: "source_collected_by_ids", visible: false },
+          { id: "accept_get_urls", visible: false },
+          { id: "accept_storage_ids", visible: false },
+          { id: "presigned", visible: false },
+          { id: "verbose_storage", visible: false },
+        ],
+      },
+      setWebhooksPreferences: (preferences) =>
+        set({ webhooksPreferences: preferences }),
+
       segmentsPreferences: {
         contentDisplay: [
           { id: "id", visible: true },

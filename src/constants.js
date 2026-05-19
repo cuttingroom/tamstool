@@ -9,7 +9,14 @@ export const PAGE_SIZE_PREFERENCE = {
   ],
 };
 export const TAMS_PAGE_LIMIT = 300;
+export const TAMS_POLLING_INTERVAL = 3000;
 export const SEGMENT_COUNT = 30;
+export const STATUS_MAPPINGS = {
+  created: { type: "pending" },
+  started: { type: "in-progress", colorOverride: "green" },
+  disabled: { type: "stopped", colorOverride: "yellow" },
+  error: { type: "error" },
+};
 export const DATE_FORMAT = {
   year: "numeric",
   month: "short",
