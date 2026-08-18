@@ -25,7 +25,6 @@ export const getEditorialPurpose = (entity) => {
   return null;
 };
 
-
 /**
  * Pick the video entity from a set of collected Sources or Flows.
  *

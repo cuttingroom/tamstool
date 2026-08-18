@@ -141,9 +141,8 @@ const columnDefinitions = [
     // use the tags.init_segment Flow tag instead.
     cell: (item) => {
       if (hasInitSegments(item)) return "true";
-      return item.essence_parameters?.init_segments === undefined
-        ? null
-        : "false";
+      // Blank means the store did not say; only an explicit false reads false.
+      return item.essence_parameters?.init_segments == null ? null : "false";
     },
     sortingComparator: (a, b) =>
       Number(hasInitSegments(a)) - Number(hasInitSegments(b)),
