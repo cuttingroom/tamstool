@@ -43,6 +43,11 @@ const Collection = ({ entityType, collection, parentId }) => {
   );
 
   const hasRole = items.some((item) => item.role !== undefined);
+  // Flow collection items carry a container_mapping describing where this Flow's
+  // essence sits in the collection's container.
+  const hasContainerMapping =
+    entityType === "flows" &&
+    items.some((item) => item.container_mapping !== undefined);
 
   const columnDefinitions = [
     {
@@ -72,6 +77,18 @@ const Collection = ({ entityType, collection, parentId }) => {
             id: "role",
             header: "Role",
             cell: (item) => item.role,
+          },
+        ]
+      : []),
+    ...(hasContainerMapping
+      ? [
+          {
+            id: "container_mapping",
+            header: "Container mapping",
+            cell: (item) =>
+              item.container_mapping
+                ? JSON.stringify(item.container_mapping)
+                : "",
           },
         ]
       : []),
