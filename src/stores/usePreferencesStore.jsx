@@ -130,17 +130,17 @@ const mergeColumns = (persisted, defaults) => {
   return [...persisted, ...defaults.filter((column) => !known.has(column.id))];
 };
 
-const migratePreferences = (state) => {
+const withNewColumns = (state) => {
   if (!state) return state;
-  const migrated = { ...state };
+  const merged = { ...state };
   Object.entries(DEFAULT_COLUMNS_BY_KEY).forEach(([key, defaults]) => {
-    if (!migrated[key]) return;
-    migrated[key] = {
-      ...migrated[key],
-      contentDisplay: mergeColumns(migrated[key].contentDisplay, defaults),
+    if (!merged[key]) return;
+    merged[key] = {
+      ...merged[key],
+      contentDisplay: mergeColumns(merged[key].contentDisplay, defaults),
     };
   });
-  return migrated;
+  return merged;
 };
 
 const usePreferencesStore = create(
@@ -214,7 +214,13 @@ const usePreferencesStore = create(
     {
       name: "tams-ui-preferences",
       version: 1,
-      migrate: migratePreferences,
+      // merge runs on every rehydrate, so a column added by a later release
+      // reaches returning users without anyone having to bump `version`.
+      // mergeColumns only appends unknown ids, so this is idempotent.
+      merge: (persisted, current) => ({ ...current, ...withNewColumns(persisted) }),
+      // Still needed: without it, zustand discards the whole persisted state of
+      // anyone whose storage predates `version`.
+      migrate: withNewColumns,
     }
   )
 );
