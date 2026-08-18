@@ -24,9 +24,15 @@ const Diagram = () => {
   const [elements, setElements] = useState([]);
   const [error, setError] = useState(null);
   const api = useApi();
-  const { collectedByIds: canQueryCollections } = useCapabilities();
+  const { collectedByIds: canQueryCollections, resolved } = useCapabilities();
 
   useEffect(() => {
+    // Without this gate the traversal runs twice on every open — once with
+    // canQueryCollections false (the slow per-member walk), then again once
+    // /service resolves — and the slower run can be the one that lands last.
+    if (!resolved) return undefined;
+
+    let cancelled = false;
     const loadData = async () => {
       setError(null);
       try {
@@ -35,16 +41,20 @@ const Diagram = () => {
           `/${type}/${id}`,
           canQueryCollections
         );
+        if (cancelled) return;
         setElements(elems);
         cyRef.current?.fit();
       } catch (err) {
-        setError(err);
+        if (!cancelled) setError(err);
       }
     };
     loadData();
 
-    return () => cyRef.current?.removeAllListeners();
-  }, [type, id, api, canQueryCollections]);
+    return () => {
+      cancelled = true;
+      cyRef.current?.removeAllListeners();
+    };
+  }, [type, id, api, canQueryCollections, resolved]);
 
   const handleZoom = (action) => {
     const zoom = cyRef.current?.zoom();
