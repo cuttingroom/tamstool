@@ -2,9 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useApi } from "@/hooks/useApi";
 import { useSources } from "@/hooks/useSources";
+import { useIngestingFlows } from "@/hooks/useFlows";
+import { useCapabilities } from "@/hooks/useService";
 import useStoreManager from "@/stores/useStoreManager";
 import StoreManager from "@/views/StoreManager";
 import { parseTimerange } from "@/utils/timerange";
+import { isFlowGrowing } from "@/utils/flowStatus";
+import { findVideoMember } from "@/utils/editorialPurpose";
+import { TAMS_PAGE_LIMIT, VIEW_MODE } from "@/constants";
 import { version as appVersion } from "../../../package.json";
 import "./Embed.css";
 
@@ -80,37 +85,47 @@ const formatDate = (dateStr) => {
   });
 };
 
-const GROWING_STALE_MS = 10 * 60 * 1000; // 10 minutes
-
 /**
- * Check if a flow is actively growing. A flow is growing if it has the
- * "ingesting" tag AND recent activity (segments_updated or created within
- * the last 10 minutes). This avoids showing abandoned ingests as "live".
+ * Resolve the video Source within a multi-Source.
  *
- * A flow is definitively NOT growing if it has the "closed_complete" tag.
+ * `role === "video"` is checked first because it costs nothing, but TAMS 8.2
+ * made the collection `role` optional, so a store may not set it at all. In
+ * that case the collected Sources are fetched in one request and picked by
+ * their editorial_purpose tag, then by NMOS format.
  */
-const isFlowGrowing = (flow) => {
-  if (flow.tags?.flow_status?.includes("closed_complete")) return false;
-  const hasIngestingTag = flow.tags?.flow_status?.includes("ingesting") ?? false;
-  if (!hasIngestingTag) return false;
-  const segUpdated = flow.segments_updated;
-  if (segUpdated) return Date.now() - new Date(segUpdated).getTime() < GROWING_STALE_MS;
-  // No segments yet — only treat as growing if the flow was created recently
-  const created = flow.created;
-  if (!created) return false;
-  return Date.now() - new Date(created).getTime() < GROWING_STALE_MS;
+const resolveVideoSourceId = async (source, api, canQueryCollections) => {
+  const collection = source.source_collection;
+  if (!collection?.length) return source.id;
+
+  const byRole = collection.find((member) => member?.role === "video");
+  if (byRole) return byRole.id;
+  if (!canQueryCollections) return source.id;
+
+  try {
+    const response = await api.get(
+      `/sources?collected_by_ids=${source.id}&limit=${TAMS_PAGE_LIMIT}`
+    );
+    const children = Array.isArray(response.data) ? response.data : [];
+    const byId = new Map(children.map((child) => [child.id, child]));
+    return findVideoMember(collection, byId) ?? source.id;
+  } catch {
+    return source.id;
+  }
 };
 
 /**
- * For each displayed source, fetch its video flow to get fps, duration,
- * and growing status. Growing status requires both the "ingesting" tag
- * and recent segment activity (within 10 minutes).
+ * For each displayed source, fetch its video flow to get fps, duration and
+ * growing status. Growing status comes from the flow's `status` (8.2) or the
+ * deprecated flow_status tag, guarded by recent segment activity.
  *
- * On initial load, all sources are fetched once. Sources that are growing
- * are tracked by flow ID and re-polled every 5s until they close.
+ * On initial load, all sources are fetched once. Sources that are growing are
+ * tracked by flow ID and re-polled every 5s until they close. `liveSourceIds`
+ * re-opens a source that has since started ingesting, which the closed-source
+ * cache would otherwise hide until the page was reloaded.
  */
-const useSourceFlowDetails = (displayedSources) => {
+const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
   const api = useApi();
+  const { collectedByIds: canQueryCollections } = useCapabilities();
   const [flowDetails, setFlowDetails] = useState(new Map());
   const [isLoading, setIsLoading] = useState(false);
 
@@ -125,6 +140,8 @@ const useSourceFlowDetails = (displayedSources) => {
     let cancelled = false;
 
     const fetchAll = async () => {
+      // A source that has started ingesting since we last looked is not closed.
+      liveSourceIds.forEach((id) => closedRef.current.delete(id));
       const toFetch = displayedSources.filter((s) => !closedRef.current.has(s.id));
       if (toFetch.length === 0) return;
 
@@ -132,8 +149,11 @@ const useSourceFlowDetails = (displayedSources) => {
       await Promise.all(
         toFetch.map(async (source) => {
           try {
-            const videoSubSource = source.source_collection?.find((s) => s.role === "video");
-            const videoSourceId = videoSubSource?.id || source.id;
+            const videoSourceId = await resolveVideoSourceId(
+              source,
+              api,
+              canQueryCollections
+            );
             const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
             const flow = listRes.data?.[0];
             if (!flow) return;
@@ -174,7 +194,7 @@ const useSourceFlowDetails = (displayedSources) => {
 
     fetchAll();
     return () => { cancelled = true; };
-  }, [api, displayedSources]);
+  }, [api, displayedSources, liveSourceIds, canQueryCollections]);
 
   // Poll growing flows by their flow ID every 5s
   useEffect(() => {
@@ -231,7 +251,22 @@ const Embed = () => {
   const needsConfig = !activeStore || !cuttingRoomTamsId;
   const [showConfig, setShowConfig] = useState(needsConfig);
   const [importing, setImporting] = useState(false);
-  const { sources, isLoading: sourcesLoading, error: sourcesError } = useSources();
+  const { sources, isLoading: sourcesLoading, error: sourcesError } = useSources({
+    viewMode: VIEW_MODE.TOP_LEVEL,
+    sortBy: "created",
+  });
+
+  // Flows the store reports as ingesting, so a recording that starts while the
+  // page is open lights up without re-scanning every source.
+  const { flows: ingestingFlows } = useIngestingFlows();
+  const liveSourceKey = (ingestingFlows ?? [])
+    .map((flow) => flow.source_id)
+    .sort()
+    .join(",");
+  const liveSourceIds = useMemo(
+    () => new Set(liveSourceKey ? liveSourceKey.split(",") : []),
+    [liveSourceKey]
+  );
 
   // Auto-sync from main app's localStorage if we already have storage access
   useEffect(() => {
@@ -255,26 +290,22 @@ const Embed = () => {
     setImporting(false);
   };
 
-  // Filter to displayable sources (not collected by a multi-source)
+  // useSources already scopes this to top-level sources, newest first where the
+  // store can sort. Older stores return them unordered, so sort here too.
   const displayedSources = useMemo(() => {
     if (!sources) return [];
-    const collectedIds = new Set();
-    for (const source of sources) {
-      if (source.collected_by?.length) {
-        collectedIds.add(source.id);
-      }
-    }
-    return sources
-      .filter((source) => !collectedIds.has(source.id))
-      .sort((a, b) => {
-        const da = a.created ? new Date(a.created) : new Date(0);
-        const db = b.created ? new Date(b.created) : new Date(0);
-        return db - da;
-      });
+    return [...sources].sort((a, b) => {
+      const da = a.created ? new Date(a.created) : new Date(0);
+      const db = b.created ? new Date(b.created) : new Date(0);
+      return db - da;
+    });
   }, [sources]);
 
   // Fetch flow details (fps, duration, growing) for each displayed source
-  const { flowDetails, isLoading: detailsLoading } = useSourceFlowDetails(displayedSources);
+  const { flowDetails, isLoading: detailsLoading } = useSourceFlowDetails(
+    displayedSources,
+    liveSourceIds
+  );
 
   const enrichedSources = useMemo(() => {
     return displayedSources.map((source) => {

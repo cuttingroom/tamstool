@@ -23,10 +23,20 @@ This project is a fork of [AWS TAMS Tools](https://github.com/aws-samples/time-a
 
 TAMS itself is a [BBC initiative](https://github.com/bbc/tams) for time-addressable media.
 
+### TAMS versions
+
+This tool targets [TAMS 8.2](https://bbc.github.io/tams/8.2/index.html) and works against 8.0 and 8.1 stores too. It reads \`api_version\` from the store's \`/service\` endpoint and only uses newer query parameters where the store advertises support -- the detected version is shown next to **Manage Stores** in the sidebar. On an 8.2 store you additionally get:
+
+- Server-side sorting, so the newest sources arrive in the first request instead of after downloading the whole store
+- Scoped listings -- **Top-level only** and **Multi-sources only** -- built on the \`collected_by_ids\` filter
+- Ingest status from the flow's \`status\` attribute rather than the deprecated \`flow_status\` tag
+- Flow Profiles, init segments, and storage-backend tag filters
+
 ### Features
 
-- **Sources** -- Browse all sources in the active TAMS store, with filtering, sorting, and column customisation.
-- **Flows** -- Browse flows, manage timeranges, and view detailed metadata.
+- **Sources** -- Browse all sources in the active TAMS store, with filtering, sorting, scoped views, and column customisation.
+- **Flows** -- Browse flows, filter by ingest status, manage timeranges, and view detailed metadata.
+- **Profiles** -- Browse Flow Profiles and the technical metadata they apply (TAMS 8.2 stores).
 - **Webhooks** -- List, register, update, and delete TAMS webhooks; inspect delivery errors.
 - **Omakase Player** -- Advanced video player with timeline visualisation and markers.
 - **Diagram View** -- Interactive graph of TAMS entity relationships (sources, flows, segments).
@@ -35,7 +45,7 @@ TAMS itself is a [BBC initiative](https://github.com/bbc/tams) for time-addressa
 
 1. Click **Manage Stores** (or use the sidebar)
 2. Enter a name and the base URL of your TAMS API endpoint
-3. Optionally add authentication (Bearer token or OAuth2 client credentials)
+3. Add authentication -- OAuth2 client credentials by default, or a Bearer token, or none for public endpoints
 4. Click **Add**, then browse Sources and Flows
 
 ### Privacy

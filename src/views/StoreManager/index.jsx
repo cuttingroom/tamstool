@@ -13,12 +13,17 @@ import {
   Tabs,
 } from "@cloudscape-design/components";
 import useStoreManager from "@/stores/useStoreManager";
+import { useCapabilities } from "@/hooks/useService";
 
 const AUTH_LABELS = {
-  none: "None",
-  bearer: "Bearer Token",
   client_credentials: "Client / Secret",
+  bearer: "Bearer Token",
+  none: "None",
 };
+
+// Most TAMS deployments are behind OAuth2 client credentials, so that is the
+// tab a new store opens on.
+const DEFAULT_AUTH_TYPE = "client_credentials";
 
 const StoreManager = () => {
   const stores = useStoreManager((s) => s.stores);
@@ -27,12 +32,14 @@ const StoreManager = () => {
   const removeStore = useStoreManager((s) => s.removeStore);
   const updateStore = useStoreManager((s) => s.updateStore);
   const setActiveStore = useStoreManager((s) => s.setActiveStore);
+  // Only the active store is queried, so the version is only known for that row.
+  const { apiVersion, resolved } = useCapabilities();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingStore, setEditingStore] = useState(null);
   const [formName, setFormName] = useState("");
   const [formEndpoint, setFormEndpoint] = useState("");
-  const [formAuthType, setFormAuthType] = useState("none");
+  const [formAuthType, setFormAuthType] = useState(DEFAULT_AUTH_TYPE);
   const [formToken, setFormToken] = useState("");
   const [formTokenUrl, setFormTokenUrl] = useState("");
   const [formClientId, setFormClientId] = useState("");
@@ -44,7 +51,7 @@ const StoreManager = () => {
     setFormName("");
     setFormEndpoint("");
     setFormCuttingRoomTamsId("");
-    setFormAuthType("none");
+    setFormAuthType(DEFAULT_AUTH_TYPE);
     setFormToken("");
     setFormTokenUrl("");
     setFormClientId("");
@@ -203,7 +210,17 @@ const StoreManager = () => {
             id: "auth",
             header: "Auth",
             width: 140,
-            cell: (item) => AUTH_LABELS[item.authType] || AUTH_LABELS.none,
+            cell: (item) => AUTH_LABELS[item.authType] ?? AUTH_LABELS.none,
+          },
+          {
+            id: "api_version",
+            header: "TAMS",
+            width: 110,
+            cell: (item) => {
+              if (item.id !== activeStoreId) return "—";
+              if (!resolved) return <StatusIndicator type="loading">…</StatusIndicator>;
+              return apiVersion ?? "Unknown";
+            },
           },
           {
             id: "actions",
@@ -309,31 +326,6 @@ const StoreManager = () => {
                 }}
                 tabs={[
                   {
-                    id: "none",
-                    label: "None",
-                    content: (
-                      <Box color="text-body-secondary" padding={{ top: "s" }}>
-                        No authentication. Use for public TAMS endpoints.
-                      </Box>
-                    ),
-                  },
-                  {
-                    id: "bearer",
-                    label: "Bearer Token",
-                    content: (
-                      <Box padding={{ top: "s" }}>
-                        <FormField description="A static Bearer token sent with every request.">
-                          <Input
-                            value={formToken}
-                            onChange={({ detail }) => setFormToken(detail.value)}
-                            placeholder="Token"
-                            type="password"
-                          />
-                        </FormField>
-                      </Box>
-                    ),
-                  },
-                  {
                     id: "client_credentials",
                     label: "Client / Secret",
                     content: (
@@ -367,6 +359,31 @@ const StoreManager = () => {
                           />
                         </FormField>
                       </SpaceBetween>
+                    ),
+                  },
+                  {
+                    id: "bearer",
+                    label: "Bearer Token",
+                    content: (
+                      <Box padding={{ top: "s" }}>
+                        <FormField description="A static Bearer token sent with every request.">
+                          <Input
+                            value={formToken}
+                            onChange={({ detail }) => setFormToken(detail.value)}
+                            placeholder="Token"
+                            type="password"
+                          />
+                        </FormField>
+                      </Box>
+                    ),
+                  },
+                  {
+                    id: "none",
+                    label: "None",
+                    content: (
+                      <Box color="text-body-secondary" padding={{ top: "s" }}>
+                        No authentication. Use for public TAMS endpoints.
+                      </Box>
                     ),
                   },
                 ]}

@@ -52,6 +52,7 @@ const Source = () => {
                 <Collection
                   entityType="sources"
                   collection={source.source_collection}
+                  parentId={source.id}
                 />
               ),
             },

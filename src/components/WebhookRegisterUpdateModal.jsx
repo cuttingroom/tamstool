@@ -28,6 +28,7 @@ const initialWebhookData = {
   source_collected_by_ids: undefined,
   accept_get_urls: undefined,
   accept_storage_ids: undefined,
+  include_object_timerange: undefined,
   presigned: undefined,
   verbose_storage: undefined,
   tags: undefined,
@@ -349,6 +350,20 @@ const WebhookRegisterUpdateModal = ({
                       typeof ids === "function"
                         ? ids(prev.accept_storage_ids)
                         : ids,
+                  }))
+                }
+              />
+              <UndefinedBoolInput
+                description="Whether to include object_timerange in flows/segments_added events. Added in TAMS 8.2 to match the HTTP API"
+                label="Include Object Timerange"
+                undefinedBool={formData.include_object_timerange}
+                setUndefinedBool={(v) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    include_object_timerange:
+                      typeof v === "function"
+                        ? v(prev.include_object_timerange)
+                        : v,
                   }))
                 }
               />

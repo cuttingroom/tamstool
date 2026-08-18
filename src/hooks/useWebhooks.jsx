@@ -23,7 +23,7 @@ export const useWebhooks = () => {
   );
 
   return {
-    webhooks: data,
+    webhooks: data?.items,
     mutate,
     isLoading,
     isValidating,

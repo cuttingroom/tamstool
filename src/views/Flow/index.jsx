@@ -13,6 +13,7 @@ import Collection from "@/components/Collection";
 import EntityHeader from "@/components/EntityHeader";
 import EntityDetails from "@/components/EntityDetails";
 import EssenceParameters from "./components/EssenceParameters";
+import ProfileTab from "./components/ProfileTab";
 import SegmentsTab from "./components/SegmentsTab";
 import Tags from "@/components/Tags";
 import { useFlow } from "@/hooks/useFlows";
@@ -62,6 +63,7 @@ const Flow = () => {
                 <Collection
                   entityType="flows"
                   collection={flow.flow_collection}
+                  parentId={flow.id}
                 />
               ),
             },
@@ -75,6 +77,15 @@ const Flow = () => {
                 />
               ),
             },
+            ...(flow.profile_id
+              ? [
+                  {
+                    label: "Profile",
+                    id: "profile",
+                    content: <ProfileTab profileId={flow.profile_id} />,
+                  },
+                ]
+              : []),
             {
               label: "Segments",
               id: "segments",

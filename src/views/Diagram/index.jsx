@@ -15,6 +15,7 @@ import { buildStylesheet } from "./constants.js";
 import { getElements } from "./utils";
 import { useEffect } from "react";
 import { useApi } from "@/hooks/useApi";
+import { useCapabilities } from "@/hooks/useService";
 
 const Diagram = () => {
   const { type, id } = useParams();
@@ -23,12 +24,17 @@ const Diagram = () => {
   const [elements, setElements] = useState([]);
   const [error, setError] = useState(null);
   const api = useApi();
+  const { collectedByIds: canQueryCollections } = useCapabilities();
 
   useEffect(() => {
     const loadData = async () => {
       setError(null);
       try {
-        const elems = await getElements(api, `/${type}/${id}`);
+        const elems = await getElements(
+          api,
+          `/${type}/${id}`,
+          canQueryCollections
+        );
         setElements(elems);
         cyRef.current?.fit();
       } catch (err) {
@@ -38,7 +44,7 @@ const Diagram = () => {
     loadData();
 
     return () => cyRef.current?.removeAllListeners();
-  }, [type, id, api]);
+  }, [type, id, api, canQueryCollections]);
 
   const handleZoom = (action) => {
     const zoom = cyRef.current?.zoom();

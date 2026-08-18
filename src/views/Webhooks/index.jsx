@@ -18,7 +18,7 @@ import { useWebhooks } from "@/hooks/useWebhooks";
 import usePreferencesStore from "@/stores/usePreferencesStore";
 import WebhookRegisterUpdateModal from "@/components/WebhookRegisterUpdateModal";
 import WebhookActionsButton from "@/components/WebhookActionsButton";
-import { PAGE_SIZE_PREFERENCE, STATUS_MAPPINGS } from "@/constants";
+import { PAGE_SIZE_PREFERENCE, WEBHOOK_STATUS_MAPPINGS } from "@/constants";
 
 const columnDefinitions = [
   {
@@ -46,7 +46,7 @@ const columnDefinitions = [
     header: "Status",
     cell: (item) =>
       item.status ? (
-        <StatusIndicator {...(STATUS_MAPPINGS[item.status] ?? {})}>
+        <StatusIndicator {...(WEBHOOK_STATUS_MAPPINGS[item.status] ?? {})}>
           {item.status}
         </StatusIndicator>
       ) : null,
@@ -155,6 +155,17 @@ const columnDefinitions = [
       ),
     sortingField: "accept_storage_ids",
     width: 360,
+  },
+  {
+    id: "include_object_timerange",
+    header: "Include object timerange",
+    cell: (item) =>
+      item.include_object_timerange !== undefined && (
+        <StatusIndicator
+          type={item.include_object_timerange ? "success" : "error"}
+        />
+      ),
+    sortingField: "include_object_timerange",
   },
   {
     id: "presigned",

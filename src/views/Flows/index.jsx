@@ -1,12 +1,15 @@
-import { PAGE_SIZE_PREFERENCE } from "@/constants";
+import { useMemo, useState } from "react";
 import {
   Alert,
   Box,
+  Button,
   CollectionPreferences,
   CopyToClipboard,
   Header,
   Pagination,
+  Select,
   SpaceBetween,
+  StatusIndicator,
   Table,
   TextFilter,
   Toggle,
@@ -14,8 +17,42 @@ import {
 import { useFlows } from "@/hooks/useFlows";
 import { Link } from "react-router-dom";
 import { useCollection } from "@cloudscape-design/collection-hooks";
+import { SERVER_SORT_FIELDS, toReverseOrder } from "@/hooks/useEntityListing";
 import usePreferencesStore from "@/stores/usePreferencesStore";
 import FlowActionsButton from "@/components/FlowActionsButton";
+import { getEditorialPurpose } from "@/utils/editorialPurpose";
+import { FLOW_STATUS_VALUES, getFlowStatus } from "@/utils/flowStatus";
+import {
+  FLOW_STATUS_MAPPINGS,
+  PAGE_SIZE_PREFERENCE,
+  RESULT_PAGE_SIZE,
+  VIEW_MODE,
+} from "@/constants";
+
+const VIEW_MODE_OPTIONS = [
+  {
+    value: VIEW_MODE.ALL,
+    label: "All flows",
+    description: "Every flow in the store",
+  },
+  {
+    value: VIEW_MODE.TOP_LEVEL,
+    label: "Top-level only",
+    description: "Flows that are not collected by another flow",
+  },
+  {
+    value: VIEW_MODE.MULTI_ONLY,
+    label: "Multi-flows only",
+    description: "Top-level flows that collect other flows",
+  },
+];
+
+const ANY_STATUS = "__any__";
+
+const STATUS_OPTIONS = [
+  { value: ANY_STATUS, label: "Any status" },
+  ...FLOW_STATUS_VALUES.map((value) => ({ value, label: value })),
+];
 
 const columnDefinitions = [
   {
@@ -72,6 +109,49 @@ const columnDefinitions = [
     header: "Created",
     cell: (item) => item.created,
     sortingField: "created",
+  },
+  {
+    id: "status",
+    header: "Status",
+    // 8.2 core attribute, falling back to the deprecated flow_status tag.
+    cell: (item) => {
+      const status = getFlowStatus(item);
+      return status ? (
+        <StatusIndicator {...(FLOW_STATUS_MAPPINGS[status] ?? {})}>
+          {status}
+        </StatusIndicator>
+      ) : null;
+    },
+    sortingComparator: (a, b) =>
+      (getFlowStatus(a) ?? "").localeCompare(getFlowStatus(b) ?? ""),
+  },
+  {
+    id: "editorial_purpose",
+    header: "Editorial purpose",
+    cell: (item) => getEditorialPurpose(item),
+    sortingComparator: (a, b) =>
+      (getEditorialPurpose(a) ?? "").localeCompare(getEditorialPurpose(b) ?? ""),
+  },
+  {
+    id: "init_segments",
+    header: "Init segments",
+    // essence_parameters.init_segments, not a top-level Flow attribute.
+    cell: (item) =>
+      item.essence_parameters?.init_segments === undefined
+        ? null
+        : String(item.essence_parameters.init_segments),
+    sortingComparator: (a, b) =>
+      Number(a.essence_parameters?.init_segments ?? false) -
+      Number(b.essence_parameters?.init_segments ?? false),
+  },
+  {
+    id: "profile_id",
+    header: "Profile",
+    cell: (item) =>
+      item.profile_id ? (
+        <Link to={`/profiles/${item.profile_id}`}>{item.profile_id}</Link>
+      ) : null,
+    sortingField: "profile_id",
   },
   {
     id: "tags",
@@ -162,6 +242,11 @@ const collectionPreferencesProps = {
   title: "Preferences",
 };
 
+const defaultSorting = {
+  sortingColumn: columnDefinitions.find((col) => col.id === "created"),
+  isDescending: true,
+};
+
 const Flows = () => {
   const preferences = usePreferencesStore((state) => state.flowsPreferences);
   const setPreferences = usePreferencesStore(
@@ -173,13 +258,50 @@ const Flows = () => {
   const setShowHierarchy = usePreferencesStore(
     (state) => state.setFlowsShowHierarchy
   );
-  const { flows, isLoading, error } = useFlows();
+  const viewMode = usePreferencesStore((state) => state.flowsViewMode);
+  const setViewMode = usePreferencesStore((state) => state.setFlowsViewMode);
+
+  const [sorting, setSorting] = useState(defaultSorting);
+  const [maxResults, setMaxResults] = useState(RESULT_PAGE_SIZE);
+  const [statusFilter, setStatusFilter] = useState(ANY_STATUS);
+
+  const sortField = sorting.sortingColumn?.sortingField;
+  const sortBy = SERVER_SORT_FIELDS.flows.includes(sortField)
+    ? sortField
+    : undefined;
+
+  const hierarchical = showHierarchy && viewMode === VIEW_MODE.ALL;
+
+  const { flows, hasMore, loadedCount, capabilities, isLoading, error } =
+    useFlows({
+      viewMode,
+      hierarchical,
+      sortBy,
+      reverseOrder: sortBy
+        ? toReverseOrder(sortBy, sorting.isDescending)
+        : false,
+      status: statusFilter === ANY_STATUS ? undefined : statusFilter,
+      maxResults,
+    });
+
+  // Older stores have no status query parameter, so filter on the tag locally.
+  const visibleFlows = useMemo(() => {
+    if (!flows) return flows;
+    if (statusFilter === ANY_STATUS || capabilities.flowStatus) return flows;
+    return flows.filter((flow) => getFlowStatus(flow) === statusFilter);
+  }, [flows, statusFilter, capabilities.flowStatus]);
+
+  const loadedIds = useMemo(
+    () => new Set((visibleFlows ?? []).map((flow) => flow.id)),
+    [visibleFlows]
+  );
+
   const { items, collectionProps, filterProps, paginationProps } =
-    useCollection(isLoading || error ? [] : flows ?? [], {
-      expandableRows: showHierarchy && {
+    useCollection(isLoading || error ? [] : visibleFlows ?? [], {
+      expandableRows: hierarchical && {
         getId: (item) => item.id,
         getParentId: (item) =>
-          item.collected_by ? item.collected_by[0] : null,
+          item.collected_by?.find((id) => loadedIds.has(id)) ?? null,
       },
       filtering: {
         empty: (
@@ -194,12 +316,7 @@ const Flows = () => {
         ),
       },
       pagination: { pageSize: preferences.pageSize },
-      sorting: {
-        defaultState: {
-          sortingColumn: columnDefinitions.find((col) => col.id === "created"),
-          isDescending: true,
-        },
-      },
+      sorting: { defaultState: defaultSorting },
       selection: {},
     });
   const { selectedItems } = collectionProps;
@@ -219,15 +336,54 @@ const Flows = () => {
     <Table
       header={
         <Header
+          counter={
+            isLoading ? undefined : `(${loadedCount}${hasMore ? "+" : ""})`
+          }
+          description={
+            capabilities.flowStatus
+              ? "Status comes from the flow's status attribute; filtering and sorting are done by the store."
+              : `Store reports TAMS ${
+                  capabilities.apiVersion ?? "8.0 or earlier"
+                }; status is read from the deprecated flow_status tag.`
+          }
           actions={
             <SpaceBetween
               size="xs"
               direction="horizontal"
               alignItems="center"
             >
+              {hasMore && (
+                <Button
+                  onClick={() => setMaxResults((current) => current + RESULT_PAGE_SIZE)}
+                  loading={isLoading}
+                >
+                  Load more
+                </Button>
+              )}
+              <Select
+                selectedOption={
+                  STATUS_OPTIONS.find((option) => option.value === statusFilter) ??
+                  STATUS_OPTIONS[0]
+                }
+                onChange={({ detail }) =>
+                  setStatusFilter(detail.selectedOption.value)
+                }
+                options={STATUS_OPTIONS}
+              />
+              <Select
+                selectedOption={
+                  VIEW_MODE_OPTIONS.find((option) => option.value === viewMode) ??
+                  VIEW_MODE_OPTIONS[0]
+                }
+                onChange={({ detail }) =>
+                  setViewMode(detail.selectedOption.value)
+                }
+                options={VIEW_MODE_OPTIONS}
+              />
               <Toggle
                 onChange={({ detail }) => setShowHierarchy(detail.checked)}
                 checked={showHierarchy}
+                disabled={viewMode !== VIEW_MODE.ALL}
               >
                 Hierarchical View
               </Toggle>
@@ -239,6 +395,10 @@ const Flows = () => {
         </Header>
       }
       {...collectionProps}
+      onSortingChange={(event) => {
+        setSorting(event.detail);
+        collectionProps.onSortingChange?.(event);
+      }}
       variant="borderless"
       loadingText="Loading resources"
       loading={isLoading}

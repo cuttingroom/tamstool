@@ -1,5 +1,6 @@
 import {
   AppLayout,
+  Badge,
   BreadcrumbGroup,
   ContentLayout,
   Flashbar,
@@ -11,6 +12,7 @@ import Header from "@/components/Header";
 import { useState } from "react";
 import useAlertsStore from "@/stores/useAlertsStore";
 import useStoreManager from "@/stores/useStoreManager";
+import { useCapabilities } from "@/hooks/useService";
 
 const Layout = () => {
   const [navigationOpen, setNavigationOpen] = useState(true);
@@ -56,6 +58,7 @@ const Layout = () => {
   };
 
   const activeStore = useStoreManager((s) => s.getActiveStore());
+  const { apiVersion, profiles: supportsProfiles, resolved } = useCapabilities();
 
   const navHeader = {
     text: activeStore ? activeStore.name : "No store selected",
@@ -67,12 +70,29 @@ const Layout = () => {
     { type: "link", text: "Flows", href: "/flows", disabled: !activeStore },
     {
       type: "link",
+      text: "Profiles",
+      href: "/profiles",
+      // 8.2 only; shown but disabled elsewhere so the gap is visible rather than
+      // the menu item silently disappearing.
+      disabled: !activeStore || !supportsProfiles,
+    },
+    {
+      type: "link",
       text: "Webhooks",
       href: "/webhooks",
       disabled: !activeStore,
     },
     { type: "divider" },
-    { type: "link", text: "Manage Stores", href: "/stores" },
+    {
+      type: "link",
+      text: "Manage Stores",
+      href: "/stores",
+      info: activeStore && resolved && (
+        <Badge color={apiVersion ? "blue" : "grey"}>
+          {apiVersion ? `TAMS ${apiVersion}` : "TAMS ?"}
+        </Badge>
+      ),
+    },
   ];
 
   return (

@@ -1,6 +1,9 @@
+import { useState } from "react";
 import {
   Box,
   CollectionPreferences,
+  FormField,
+  Select,
   SpaceBetween,
   Table,
 } from "@cloudscape-design/components";
@@ -9,11 +12,29 @@ import usePreferencesStore from "@/stores/usePreferencesStore";
 import { SEGMENT_COUNT, DATE_FORMAT } from "@/constants";
 import { parseTimerangeDateTime } from "@/utils/timerange";
 import { useLastN } from "@/hooks/useSegments";
+import { useStorageBackends } from "@/hooks/useService";
+
+const ANY = "__any__";
+const ANY_OPTION = { value: ANY, label: "Any" };
 
 const SegmentsTab = ({ flowId }) => {
   const preferences = usePreferencesStore((state) => state.segmentsPreferences);
   const setPreferences = usePreferencesStore((state) => state.setSegmentsPreferences);
-  const { segments, isLoading: loadingSegments } = useLastN(flowId, SEGMENT_COUNT);
+
+  // 8.2 storage_backend_tag filters narrow which storage backends' get_urls are
+  // returned. The options come from the tags the store's backends actually carry.
+  const { tags: storageTags, supported: supportsStorageTags } = useStorageBackends();
+  const [tagName, setTagName] = useState(ANY);
+  const [tagValue, setTagValue] = useState(ANY);
+
+  const selectedTag = storageTags.find((tag) => tag.name === tagName);
+  const { segments, isLoading: loadingSegments } = useLastN(
+    flowId,
+    SEGMENT_COUNT,
+    tagName === ANY
+      ? undefined
+      : { name: tagName, value: tagValue === ANY ? undefined : tagValue }
+  );
 
   const columnDefinitions = [
     {
@@ -41,6 +62,11 @@ const SegmentsTab = ({ flowId }) => {
       id: "object_timerange",
       header: "Object Timerange",
       cell: (item) => item.object_timerange,
+    },
+    {
+      id: "init_object",
+      header: "Init Object",
+      cell: (item) => item.init_object?.object_id,
     },
     {
       id: "sample_offset",
@@ -87,6 +113,46 @@ const SegmentsTab = ({ flowId }) => {
   return (
     <SpaceBetween size="xs">
       <i>Showing last {SEGMENT_COUNT} segments</i>
+      {supportsStorageTags && storageTags.length > 0 && (
+        <SpaceBetween size="xs" direction="horizontal" alignItems="end">
+          <FormField label="Storage backend tag">
+            <Select
+              selectedOption={
+                tagName === ANY
+                  ? ANY_OPTION
+                  : { value: tagName, label: tagName }
+              }
+              onChange={({ detail }) => {
+                setTagName(detail.selectedOption.value);
+                setTagValue(ANY);
+              }}
+              options={[
+                ANY_OPTION,
+                ...storageTags.map((tag) => ({
+                  value: tag.name,
+                  label: tag.name,
+                })),
+              ]}
+            />
+          </FormField>
+          <FormField label="Value">
+            <Select
+              disabled={tagName === ANY}
+              selectedOption={
+                tagValue === ANY ? ANY_OPTION : { value: tagValue, label: tagValue }
+              }
+              onChange={({ detail }) => setTagValue(detail.selectedOption.value)}
+              options={[
+                ANY_OPTION,
+                ...(selectedTag?.values ?? []).map((value) => ({
+                  value,
+                  label: value,
+                })),
+              ]}
+            />
+          </FormField>
+        </SpaceBetween>
+      )}
       <Table
         trackBy="object_id"
         variant="borderless"
