@@ -25,7 +25,11 @@ const SegmentsTab = ({ flowId }) => {
 
   // 8.2 storage_backend_tag filters narrow which storage backends' get_urls are
   // returned. The options come from the tags the store's backends actually carry.
-  const { tags: storageTags, supported: supportsStorageTags } = useStorageBackends();
+  const {
+    tags: storageTags,
+    supported: supportsStorageTags,
+    error: storageTagsError,
+  } = useStorageBackends();
   const [tagName, setTagName] = useState(ANY);
   const [tagValue, setTagValue] = useState(ANY);
 
@@ -115,10 +119,14 @@ const SegmentsTab = ({ flowId }) => {
     title: "Preferences",
   };
 
-
   return (
     <SpaceBetween size="xs">
       <i>Showing last {SEGMENT_COUNT} segments</i>
+      {supportsStorageTags && storageTagsError && (
+        <Box color="text-status-error" fontSize="body-s">
+          Storage backend tags unavailable: {storageTagsError.message}
+        </Box>
+      )}
       {supportsStorageTags && storageTags.length > 0 && (
         <SpaceBetween size="xs" direction="horizontal" alignItems="end">
           <FormField label="Storage backend tag">

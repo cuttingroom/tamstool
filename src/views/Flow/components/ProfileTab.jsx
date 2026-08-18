@@ -8,9 +8,10 @@ import { useProfile } from "@/hooks/useService";
  * the technical metadata it applied to this Flow.
  */
 const ProfileTab = ({ profileId }) => {
-  const { profile, isLoading, error } = useProfile(profileId);
+  const { profile, supported, resolved, detectionFailed, isLoading, error } =
+    useProfile(profileId);
 
-  if (isLoading) {
+  if (!resolved || isLoading) {
     return (
       <Box textAlign="center">
         <Spinner />
@@ -26,6 +27,12 @@ const ProfileTab = ({ profileId }) => {
       {error ? (
         <Box color="text-status-error">
           Could not load profile: {error.message}
+        </Box>
+      ) : detectionFailed || !supported ? (
+        <Box color="text-status-inactive">
+          {detectionFailed
+            ? "Profile metadata unavailable: could not read the store's capabilities."
+            : "This store does not advertise Flow Profiles, so its metadata cannot be shown."}
         </Box>
       ) : (
         <EssenceParameters essenceParameters={profile?.flow_metadata} />

@@ -125,7 +125,7 @@ const resolveVideoSourceId = async (source, api, canQueryCollections) => {
  */
 const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
   const api = useApi();
-  const { collectedByIds: canQueryCollections } = useCapabilities();
+  const { collectedByIds: canQueryCollections, resolved } = useCapabilities();
   const [flowDetails, setFlowDetails] = useState(new Map());
   const [isLoading, setIsLoading] = useState(false);
 
@@ -136,7 +136,9 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
 
   // Fetch all uncached sources when the source list changes
   useEffect(() => {
-    if (!api.endpoint || displayedSources.length === 0) return;
+    // Wait for /service: resolving a source with canQueryCollections still
+    // false would cache the wrong video flow in closedRef permanently.
+    if (!resolved || !api.endpoint || displayedSources.length === 0) return;
     let cancelled = false;
 
     const fetchAll = async () => {
@@ -194,7 +196,7 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
 
     fetchAll();
     return () => { cancelled = true; };
-  }, [api, displayedSources, liveSourceIds, canQueryCollections]);
+  }, [api, displayedSources, liveSourceIds, canQueryCollections, resolved]);
 
   // Poll growing flows by their flow ID every 5s
   useEffect(() => {

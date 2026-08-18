@@ -13,8 +13,10 @@ export const useService = () => {
       revalidateOnFocus: false,
       revalidateIfStale: false,
       // This one request gates every 8.2 feature, so a transient failure must
-      // not pin the session to the 8.0 baseline until the user reloads.
+      // not pin the session to the 8.0 baseline until the user reloads. Capped
+      // so a permanently unreachable store settles instead of retrying forever.
       shouldRetryOnError: true,
+      errorRetryCount: 5,
     }
   );
 
@@ -43,7 +45,9 @@ export const useCapabilities = () => {
     service,
     error,
     detectionFailed: Boolean(error),
-    resolved: !isLoading,
+    // An error is a settled answer. Without this, each retry flips isLoading
+    // back to true and the UI pulses between a spinner and the honest error.
+    resolved: !isLoading || Boolean(error),
   };
 };
 
@@ -54,10 +58,18 @@ export const useCapabilities = () => {
  */
 export const useStorageBackends = () => {
   const api = useApi();
-  const { storageBackendTags: supported, resolved } = useCapabilities();
+  const {
+    storageBackendTags: supported,
+    resolved,
+    detectionFailed,
+  } = useCapabilities();
 
+  // Gated on `supported` so an 8.0 store is not asked for an endpoint it does
+  // not have on every mount.
   const { data, error, isLoading } = useSWR(
-    api.endpoint ? [api.endpoint, "/service/storage-backends"] : null,
+    api.endpoint && resolved && supported
+      ? [api.endpoint, "/service/storage-backends"]
+      : null,
     ([, path]) => api.get(path),
     { revalidateOnFocus: false, shouldRetryOnError: false }
   );
@@ -82,7 +94,9 @@ export const useStorageBackends = () => {
       name,
       values: [...values],
     })),
-    supported: supported && resolved,
+    supported,
+    resolved,
+    detectionFailed,
     isLoading,
     error,
   };
