@@ -21,6 +21,7 @@ import { SERVER_SORT_FIELDS, toReverseOrder } from "@/hooks/useEntityListing";
 import usePreferencesStore from "@/stores/usePreferencesStore";
 import FlowActionsButton from "@/components/FlowActionsButton";
 import { getEditorialPurpose } from "@/utils/editorialPurpose";
+import { hasInitSegments } from "@/utils/initSegments";
 import { FLOW_STATUS_VALUES, getFlowStatus } from "@/utils/flowStatus";
 import {
   FLOW_STATUS_MAPPINGS,
@@ -135,14 +136,16 @@ const columnDefinitions = [
   {
     id: "init_segments",
     header: "Init segments",
-    // essence_parameters.init_segments, not a top-level Flow attribute.
-    cell: (item) =>
-      item.essence_parameters?.init_segments === undefined
+    // 8.2 puts this under essence_parameters, not on the Flow; pre-8.2 stores
+    // use the tags.init_segment Flow tag instead.
+    cell: (item) => {
+      if (hasInitSegments(item)) return "true";
+      return item.essence_parameters?.init_segments === undefined
         ? null
-        : String(item.essence_parameters.init_segments),
+        : "false";
+    },
     sortingComparator: (a, b) =>
-      Number(a.essence_parameters?.init_segments ?? false) -
-      Number(b.essence_parameters?.init_segments ?? false),
+      Number(hasInitSegments(a)) - Number(hasInitSegments(b)),
   },
   {
     id: "profile_id",

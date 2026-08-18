@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Badge,
   Box,
   CollectionPreferences,
   FormField,
@@ -11,6 +12,7 @@ import usePreferencesStore from "@/stores/usePreferencesStore";
 
 import { SEGMENT_COUNT, DATE_FORMAT } from "@/constants";
 import { parseTimerangeDateTime } from "@/utils/timerange";
+import { isInitSegmentEntry } from "@/utils/initSegments";
 import { useLastN } from "@/hooks/useSegments";
 import { useStorageBackends } from "@/hooks/useService";
 
@@ -66,7 +68,11 @@ const SegmentsTab = ({ flowId }) => {
     {
       id: "init_object",
       header: "Init Object",
-      cell: (item) => item.init_object?.object_id,
+      // Pre-8.2 stores have no init_object; they list the init object itself as
+      // a zero-length entry, which is easily mistaken for a media segment.
+      cell: (item) =>
+        item.init_object?.object_id ??
+        (isInitSegmentEntry(item) ? <Badge>init segment</Badge> : null),
     },
     {
       id: "sample_offset",
