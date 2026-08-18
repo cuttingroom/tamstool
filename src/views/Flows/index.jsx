@@ -22,6 +22,7 @@ import usePreferencesStore from "@/stores/usePreferencesStore";
 import FlowActionsButton from "@/components/FlowActionsButton";
 import { getEditorialPurpose } from "@/utils/editorialPurpose";
 import { hasInitSegments } from "@/utils/initSegments";
+import { MAX_DEPTH } from "@/utils/fetchEntityTree";
 import { FLOW_STATUS_VALUES, getFlowStatus } from "@/utils/flowStatus";
 import {
   FLOW_STATUS_MAPPINGS,
@@ -275,8 +276,16 @@ const Flows = () => {
 
   const hierarchical = showHierarchy && viewMode === VIEW_MODE.ALL;
 
-  const { flows, hasMore, loadedCount, capabilities, treeMode, isLoading, error } =
-    useFlows({
+  const {
+    flows,
+    hasMore,
+    truncated,
+    loadedCount,
+    capabilities,
+    treeMode,
+    isLoading,
+    error,
+  } = useFlows({
       viewMode,
       hierarchical,
       sortBy,
@@ -339,6 +348,10 @@ const Flows = () => {
   } else {
     description =
       "Status comes from the flow's status attribute; the store applies the status filter and the Created, Metadata updated and Label sorts.";
+  }
+
+  if (truncated) {
+    description = `${description} The hierarchy is incomplete: it is nested deeper than ${MAX_DEPTH} levels, or a collection has more children than one page.`;
   }
 
   if (error) {

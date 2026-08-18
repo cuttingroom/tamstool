@@ -2,9 +2,12 @@ import buildQuery from "@/utils/buildQuery";
 import paginationFetcher from "@/utils/paginationFetcher";
 import { TAMS_PAGE_LIMIT } from "@/constants";
 
-// Keep collected_by_ids URLs to a sane length — each id is 36 characters.
+// 40 ids x 37 chars is ~1.5 kB of query string, well inside the 8 kB request
+// line that proxies commonly cap at.
 const IDS_PER_REQUEST = 40;
-const MAX_DEPTH = 4;
+// Collections nested deeper than this are not loaded; the caller is told via
+// `truncated` so the gap is visible rather than looking like an empty branch.
+export const MAX_DEPTH = 4;
 
 const batchIds = (ids, size) => {
   const batches = [];
@@ -22,8 +25,12 @@ const batchIds = (ids, size) => {
  * level in a single request. Cloudscape only renders an expand control for rows
  * whose children are already in the item set, so the tree is fetched by depth
  * rather than on expand — that is still a handful of requests instead of one
- * per collection, and unlike the previous client-side tree it is correct across
- * page boundaries.
+ * per collection.
+ *
+ * `maxResults` applies per request, so `items` can exceed it once descendants
+ * are included. `truncated` reports that the tree is incomplete, either because
+ * the depth cap stopped the descent or because a level had more children than
+ * one page.
  */
 const fetchEntityTree = async (entityType, api, maxResults = TAMS_PAGE_LIMIT) => {
   const rootPath = buildQuery(`/${entityType}`, {
@@ -35,6 +42,7 @@ const fetchEntityTree = async (entityType, api, maxResults = TAMS_PAGE_LIMIT) =>
   const items = [...roots.items];
   const seen = new Set(items.map((item) => item.id));
   let frontier = items.map((item) => item.id);
+  let childrenTruncated = false;
 
   for (let depth = 0; depth < MAX_DEPTH && frontier.length > 0; depth += 1) {
     const batches = batchIds(frontier, IDS_PER_REQUEST);
@@ -51,6 +59,8 @@ const fetchEntityTree = async (entityType, api, maxResults = TAMS_PAGE_LIMIT) =>
       )
     );
 
+    if (responses.some((response) => response.hasMore)) childrenTruncated = true;
+
     const fresh = responses
       .flatMap((response) => response.items)
       .filter((item) => !seen.has(item.id));
@@ -60,7 +70,15 @@ const fetchEntityTree = async (entityType, api, maxResults = TAMS_PAGE_LIMIT) =>
     frontier = fresh.map((item) => item.id);
   }
 
-  return { items, hasMore: roots.hasMore };
+  // A non-empty frontier here means the depth cap stopped the descent.
+  const depthExceeded = frontier.length > 0;
+
+  return {
+    items,
+    hasMore: roots.hasMore || childrenTruncated,
+    truncated: depthExceeded || childrenTruncated,
+    depthExceeded,
+  };
 };
 
 export default fetchEntityTree;

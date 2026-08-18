@@ -20,6 +20,7 @@ import { useSources } from "@/hooks/useSources";
 import { SERVER_SORT_FIELDS, toReverseOrder } from "@/hooks/useEntityListing";
 import usePreferencesStore from "@/stores/usePreferencesStore";
 import { getEditorialPurpose } from "@/utils/editorialPurpose";
+import { MAX_DEPTH } from "@/utils/fetchEntityTree";
 import {
   PAGE_SIZE_PREFERENCE,
   RESULT_PAGE_SIZE,
@@ -109,8 +110,10 @@ const columnDefinitions = [
   {
     id: "editorial_purpose",
     header: "Editorial purpose",
+    // Lives under tags, so there is no top-level field to sort on.
     cell: (item) => getEditorialPurpose(item),
-    sortingField: "editorial_purpose",
+    sortingComparator: (a, b) =>
+      (getEditorialPurpose(a) ?? "").localeCompare(getEditorialPurpose(b) ?? ""),
   },
   {
     id: "tags",
@@ -179,16 +182,22 @@ const Sources = () => {
   // The hierarchy needs children in the item set, which the scoped views exclude.
   const hierarchical = showHierarchy && viewMode === VIEW_MODE.ALL;
 
-  const { sources, hasMore, loadedCount, capabilities, treeMode, isLoading, error } =
-    useSources({
-      viewMode,
-      hierarchical,
-      sortBy,
-      reverseOrder: sortBy
-        ? toReverseOrder(sortBy, sorting.isDescending)
-        : false,
-      maxResults,
-    });
+  const {
+    sources,
+    hasMore,
+    truncated,
+    loadedCount,
+    capabilities,
+    treeMode,
+    isLoading,
+    error,
+  } = useSources({
+    viewMode,
+    hierarchical,
+    sortBy,
+    reverseOrder: sortBy ? toReverseOrder(sortBy, sorting.isDescending) : false,
+    maxResults,
+  });
 
   const loadedIds = useMemo(
     () => new Set((sources ?? []).map((source) => source.id)),
@@ -234,6 +243,10 @@ const Sources = () => {
   } else {
     description =
       "Sorted by the store. Sort on Created, Updated or Label to re-query; other columns sort the loaded rows.";
+  }
+
+  if (truncated) {
+    description = `${description} The hierarchy is incomplete: it is nested deeper than ${MAX_DEPTH} levels, or a collection has more children than one page.`;
   }
 
   if (error) {

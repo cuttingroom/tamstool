@@ -99,6 +99,7 @@ export const useEntityListing = (entityType, options = {}) => {
   return {
     items,
     hasMore: data?.hasMore ?? false,
+    truncated: data?.truncated ?? false,
     loadedCount: data?.items.length ?? 0,
     capabilities,
     treeMode,
