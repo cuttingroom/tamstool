@@ -33,8 +33,14 @@ export const getFlowStatus = (flow) => {
  * Whether a Flow is actively receiving content. The spec is explicit that
  * `status` is client-maintained and therefore indicative rather than
  * authoritative, so an ingesting Flow that has not moved recently is treated as
- * abandoned. Where no activity timestamp is available at all (list responses
- * drop `segments_updated`) the reported status is taken at face value.
+ * abandoned.
+ *
+ * `segments_updated` is the only field that measures ingest activity, so where
+ * it is absent the reported status is taken at face value rather than guessed
+ * at from `created` — a long-running ingest is not a stale one. Note that
+ * paginationFetcher strips `segments_updated`, so a Flow from a listing always
+ * takes the face-value path; pass a Flow from the detail endpoint where the
+ * distinction matters.
  */
 export const isFlowGrowing = (flow, now = Date.now()) => {
   const status = getFlowStatus(flow);
@@ -46,7 +52,7 @@ export const isFlowGrowing = (flow, now = Date.now()) => {
     return false;
   }
 
-  const lastActivity = flow?.segments_updated ?? flow?.created;
+  const lastActivity = flow?.segments_updated;
   if (!lastActivity) return true;
 
   const timestamp = new Date(lastActivity).getTime();
