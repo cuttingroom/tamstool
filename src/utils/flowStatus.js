@@ -35,12 +35,16 @@ export const getFlowStatus = (flow) => {
  * authoritative, so an ingesting Flow that has not moved recently is treated as
  * abandoned.
  *
- * `segments_updated` is the only field that measures ingest activity, so where
- * it is absent the reported status is taken at face value rather than guessed
- * at from `created` — a long-running ingest is not a stale one. Note that
- * paginationFetcher strips `segments_updated`, so a Flow from a listing always
- * takes the face-value path; pass a Flow from the detail endpoint where the
- * distinction matters.
+ * `segments_updated` measures activity directly. Where it is absent — a Flow
+ * that has not received a segment yet, or a store that does not report it —
+ * `created` stands in as a grace window: an ingest that was announced but never
+ * started still ages out, rather than reporting itself live forever. That is
+ * the abandoned-ingest case this guard exists for, so the fallback is doing
+ * real work and is not a substitute activity signal.
+ *
+ * Note that paginationFetcher strips `segments_updated`, so a Flow from a
+ * listing always falls through to `created`; pass a Flow from the detail
+ * endpoint where the distinction matters.
  */
 export const isFlowGrowing = (flow, now = Date.now()) => {
   const status = getFlowStatus(flow);
@@ -52,7 +56,7 @@ export const isFlowGrowing = (flow, now = Date.now()) => {
     return false;
   }
 
-  const lastActivity = flow?.segments_updated;
+  const lastActivity = flow?.segments_updated ?? flow?.created;
   if (!lastActivity) return true;
 
   const timestamp = new Date(lastActivity).getTime();
