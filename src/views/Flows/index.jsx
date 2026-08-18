@@ -349,8 +349,15 @@ const Flows = () => {
       "Status comes from the flow's status attribute; the store applies the status filter and the Created, Metadata updated and Label sorts.";
   }
 
-  if (truncated) {
-    description = `${description} The hierarchy is incomplete: it is nested deeper than ${MAX_DEPTH} levels, or a collection has more children than one page.`;
+  // Filtering a tree drops non-matching parents, and Cloudscape promotes their
+  // children to the top level — so say so rather than showing a tree that
+  // quietly differs from the real hierarchy.
+  if (treeMode && statusFilter !== ANY_STATUS) {
+    description = `${description} Flows whose parent does not match the filter are shown at the top level.`;
+  }
+
+  if (treeMode && truncated) {
+    description = `${description} The hierarchy may be incomplete: it is nested at least ${MAX_DEPTH} levels deep, or a collection has more children than one page.`;
   }
 
   if (error) {

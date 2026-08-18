@@ -245,8 +245,8 @@ const Sources = () => {
       "Sorted by the store. Sort on Created, Updated or Label to re-query; other columns sort the loaded rows.";
   }
 
-  if (truncated) {
-    description = `${description} The hierarchy is incomplete: it is nested deeper than ${MAX_DEPTH} levels, or a collection has more children than one page.`;
+  if (treeMode && truncated) {
+    description = `${description} The hierarchy may be incomplete: it is nested at least ${MAX_DEPTH} levels deep, or a collection has more children than one page.`;
   }
 
   if (error) {

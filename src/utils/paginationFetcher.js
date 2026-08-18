@@ -17,9 +17,12 @@ const paginationFetcher = async (path, maxResults, api) => {
   while (response.nextLink && (!maxResults || records.length < maxResults)) {
     const nextPath = response.nextLink.slice(endpoint.length);
     response = await get(nextPath);
-    if (Array.isArray(response.data)) {
-      records = records.concat(response.data);
+    // Throw rather than skip: silently dropping a page yields a listing that
+    // looks complete, and callers now report completeness to the user.
+    if (!Array.isArray(response.data)) {
+      throw new Error("Unexpected response from TAMS store");
     }
+    records = records.concat(response.data);
   }
 
   const truncated = Boolean(maxResults) && records.length > maxResults;

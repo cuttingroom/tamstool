@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import useSWR from "swr";
 import { useApi } from "@/hooks/useApi";
 import { useSources } from "@/hooks/useSources";
 import { useIngestingFlows } from "@/hooks/useFlows";

@@ -126,8 +126,14 @@ const DEFAULT_COLUMNS_BY_KEY = {
  */
 const mergeColumns = (persisted, defaults) => {
   if (!Array.isArray(persisted)) return defaults;
-  const known = new Set(persisted.map((column) => column.id));
-  return [...persisted, ...defaults.filter((column) => !known.has(column.id))];
+  // Drop malformed entries rather than throwing on column.id: this now runs on
+  // every rehydrate, and a throw here is swallowed by zustand and silently
+  // resets every preference to defaults.
+  const clean = persisted.filter(
+    (column) => column && typeof column.id === "string"
+  );
+  const known = new Set(clean.map((column) => column.id));
+  return [...clean, ...defaults.filter((column) => !known.has(column.id))];
 };
 
 const withNewColumns = (state) => {
@@ -218,9 +224,13 @@ const usePreferencesStore = create(
       // reaches returning users without anyone having to bump `version`.
       // mergeColumns only appends unknown ids, so this is idempotent.
       merge: (persisted, current) => ({ ...current, ...withNewColumns(persisted) }),
-      // Still needed: without it, zustand discards the whole persisted state of
-      // anyone whose storage predates `version`.
+      // Still needed: the previous build stored version 0 (zustand's default),
+      // and on a mismatch with no migrate function zustand discards the whole
+      // persisted blob rather than falling through to merge.
       migrate: withNewColumns,
+      onRehydrateStorage: () => (_state, error) => {
+        if (error) console.error("Preferences could not be restored", error);
+      },
     }
   )
 );

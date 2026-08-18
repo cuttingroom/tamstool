@@ -70,14 +70,15 @@ const fetchEntityTree = async (entityType, api, maxResults = TAMS_PAGE_LIMIT) =>
     frontier = fresh.map((item) => item.id);
   }
 
-  // A non-empty frontier here means the depth cap stopped the descent.
-  const depthExceeded = frontier.length > 0;
+  // A non-empty frontier means the depth cap stopped the descent before those
+  // items were probed for children. They may be leaves, so this reports "not
+  // verified" rather than "definitely more" — the copy is hedged to match.
+  const depthUnverified = frontier.length > 0;
 
   return {
     items,
     hasMore: roots.hasMore || childrenTruncated,
-    truncated: depthExceeded || childrenTruncated,
-    depthExceeded,
+    truncated: depthUnverified || childrenTruncated,
   };
 };
 
