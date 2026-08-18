@@ -27,11 +27,7 @@ export const getCapabilities = (apiVersion) => {
     flowStatus: has82,
     // 8.2: /service/profiles and the profile_id Flow filter
     profiles: has82,
-    // 8.2: init_segments Flow attribute and filter
-    initSegments: has82,
-    // 8.2: storage_backend_tag.{name} filters on segments and objects
+    // 8.2: storage_backend_tag.{name} filters on segments
     storageBackendTags: has82,
-    // 8.2: editorial_purpose tag replaces the now-optional collection role
-    editorialPurpose: has82,
   };
 };

@@ -48,8 +48,6 @@ export const useEntityListing = (entityType, options = {}) => {
     sortBy,
     reverseOrder = false,
     status,
-    profileId,
-    initSegments,
     maxResults = RESULT_PAGE_SIZE,
     refreshInterval,
   } = options;
@@ -66,8 +64,6 @@ export const useEntityListing = (entityType, options = {}) => {
     reverse_order: capabilities.sortBy && reverseOrder ? true : undefined,
     collected_by_ids: scoped ? "" : undefined,
     status: capabilities.flowStatus ? status : undefined,
-    profile_id: capabilities.profiles ? profileId : undefined,
-    init_segments: capabilities.initSegments ? initSegments : undefined,
   });
 
   const limit = capabilities.sortBy ? maxResults : null;

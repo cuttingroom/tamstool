@@ -60,5 +60,3 @@ export const isFlowGrowing = (flow, now = Date.now()) => {
   return now - timestamp < GROWING_STALE_MS;
 };
 
-export const isFlowClosed = (flow) =>
-  getFlowStatus(flow) === FLOW_STATUS.CLOSED_COMPLETE;

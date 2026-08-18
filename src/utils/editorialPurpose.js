@@ -6,7 +6,6 @@ export const EDITORIAL_PURPOSE = {
   PROGRAMME: "programme",
   PROGRAMME_SIGNED: "programme_signed",
   CLEANFEED: "cleanfeed",
-  PRIMARY: "primary",
 };
 
 // Preference order when looking for the main video of a multi-Source.
@@ -26,12 +25,6 @@ export const getEditorialPurpose = (entity) => {
   return null;
 };
 
-/**
- * Describe a collected entity in the terms the store actually gave us:
- * the 8.2 editorial_purpose tag where present, otherwise the legacy role.
- */
-export const describeCollectionMember = (member, entity) =>
-  getEditorialPurpose(entity) ?? member?.role ?? null;
 
 /**
  * Pick the video entity from a set of collected Sources or Flows.
