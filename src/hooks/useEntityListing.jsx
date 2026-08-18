@@ -36,6 +36,10 @@ const COLLECTION_FIELD = {
  * `collected_by_ids=` narrows the listing to top-level entities. Older stores
  * keep the previous behaviour of walking every page and sorting in the browser,
  * because their first page arrives in no guaranteed order.
+ *
+ * Hierarchical mode is the exception: the tree is fetched by structure, so the
+ * query filters and sort are not sent. Callers must apply them to the loaded
+ * rows instead, which is what `treeMode` in the return value is for.
  */
 export const useEntityListing = (entityType, options = {}) => {
   const {
@@ -97,6 +101,7 @@ export const useEntityListing = (entityType, options = {}) => {
     hasMore: data?.hasMore ?? false,
     loadedCount: data?.items.length ?? 0,
     capabilities,
+    treeMode,
     mutate,
     isLoading: isLoading || !capabilities.resolved,
     isValidating,

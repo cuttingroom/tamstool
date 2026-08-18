@@ -179,7 +179,7 @@ const Sources = () => {
   // The hierarchy needs children in the item set, which the scoped views exclude.
   const hierarchical = showHierarchy && viewMode === VIEW_MODE.ALL;
 
-  const { sources, hasMore, loadedCount, capabilities, isLoading, error } =
+  const { sources, hasMore, loadedCount, capabilities, treeMode, isLoading, error } =
     useSources({
       viewMode,
       hierarchical,
@@ -221,6 +221,19 @@ const Sources = () => {
       selection: {},
     });
 
+  let description;
+  if (!capabilities.sortBy) {
+    description = `Store reports TAMS ${
+      capabilities.apiVersion ?? "8.0 or earlier"
+    }; all sources are loaded and sorted in the browser.`;
+  } else if (treeMode) {
+    description =
+      "Hierarchical view fetches the tree by structure, so all columns sort the loaded rows.";
+  } else {
+    description =
+      "Sorted by the store. Sort on Created, Updated or Label to re-query; other columns sort the loaded rows.";
+  }
+
   if (error) {
     return (
       <Alert type="error" header="Could not connect to TAMS store">
@@ -239,13 +252,7 @@ const Sources = () => {
           counter={
             isLoading ? undefined : `(${loadedCount}${hasMore ? "+" : ""})`
           }
-          description={
-            capabilities.sortBy
-              ? "Sorted by the store. Sort on Created, Updated or Label to re-query; other columns sort the loaded rows."
-              : `Store reports TAMS ${
-                  capabilities.apiVersion ?? "8.0 or earlier"
-                }; all sources are loaded and sorted in the browser.`
-          }
+          description={description}
           actions={
             <SpaceBetween
               size="xs"

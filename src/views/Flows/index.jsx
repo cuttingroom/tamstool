@@ -272,7 +272,7 @@ const Flows = () => {
 
   const hierarchical = showHierarchy && viewMode === VIEW_MODE.ALL;
 
-  const { flows, hasMore, loadedCount, capabilities, isLoading, error } =
+  const { flows, hasMore, loadedCount, capabilities, treeMode, isLoading, error } =
     useFlows({
       viewMode,
       hierarchical,
@@ -284,12 +284,14 @@ const Flows = () => {
       maxResults,
     });
 
-  // Older stores have no status query parameter, so filter on the tag locally.
+  // Filter locally unless the store did it: older stores have no status query
+  // parameter, and hierarchical mode fetches by structure without sending one.
+  const serverFiltered = capabilities.flowStatus && !treeMode;
   const visibleFlows = useMemo(() => {
     if (!flows) return flows;
-    if (statusFilter === ANY_STATUS || capabilities.flowStatus) return flows;
+    if (statusFilter === ANY_STATUS || serverFiltered) return flows;
     return flows.filter((flow) => getFlowStatus(flow) === statusFilter);
-  }, [flows, statusFilter, capabilities.flowStatus]);
+  }, [flows, statusFilter, serverFiltered]);
 
   const loadedIds = useMemo(
     () => new Set((visibleFlows ?? []).map((flow) => flow.id)),
@@ -321,6 +323,19 @@ const Flows = () => {
     });
   const { selectedItems } = collectionProps;
 
+  let description;
+  if (!capabilities.flowStatus) {
+    description = `Store reports TAMS ${
+      capabilities.apiVersion ?? "8.0 or earlier"
+    }; status is read from the deprecated flow_status tag.`;
+  } else if (treeMode) {
+    description =
+      "Status comes from the flow's status attribute. Hierarchical view fetches the tree by structure, so filtering and sorting apply to the loaded rows.";
+  } else {
+    description =
+      "Status comes from the flow's status attribute; the store applies the status filter and the Created, Metadata updated and Label sorts.";
+  }
+
   if (error) {
     return (
       <Alert type="error" header="Could not connect to TAMS store">
@@ -339,13 +354,7 @@ const Flows = () => {
           counter={
             isLoading ? undefined : `(${loadedCount}${hasMore ? "+" : ""})`
           }
-          description={
-            capabilities.flowStatus
-              ? "Status comes from the flow's status attribute; filtering and sorting are done by the store."
-              : `Store reports TAMS ${
-                  capabilities.apiVersion ?? "8.0 or earlier"
-                }; status is read from the deprecated flow_status tag.`
-          }
+          description={description}
           actions={
             <SpaceBetween
               size="xs"
