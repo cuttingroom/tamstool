@@ -324,7 +324,9 @@ const Flows = () => {
   const { selectedItems } = collectionProps;
 
   let description;
-  if (!capabilities.flowStatus) {
+  if (capabilities.detectionFailed) {
+    description = `Could not read the store's api_version (${capabilities.error.message}); falling back to TAMS 8.0 behaviour.`;
+  } else if (!capabilities.flowStatus) {
     description = `Store reports TAMS ${
       capabilities.apiVersion ?? "8.0 or earlier"
     }; status is read from the deprecated flow_status tag.`;

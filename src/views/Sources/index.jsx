@@ -222,7 +222,9 @@ const Sources = () => {
     });
 
   let description;
-  if (!capabilities.sortBy) {
+  if (capabilities.detectionFailed) {
+    description = `Could not read the store's api_version (${capabilities.error.message}); falling back to TAMS 8.0 behaviour.`;
+  } else if (!capabilities.sortBy) {
     description = `Store reports TAMS ${
       capabilities.apiVersion ?? "8.0 or earlier"
     }; all sources are loaded and sorted in the browser.`;

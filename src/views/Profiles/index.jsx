@@ -5,6 +5,7 @@ import {
   CopyToClipboard,
   Header,
   Pagination,
+  Spinner,
   Table,
   TextFilter,
 } from "@cloudscape-design/components";
@@ -96,7 +97,8 @@ const Profiles = () => {
   const setPreferences = usePreferencesStore(
     (state) => state.setProfilesPreferences
   );
-  const { profiles, supported, isLoading, error } = useProfiles();
+  const { profiles, supported, resolved, detectionFailed, isLoading, error } =
+    useProfiles();
 
   const { items, collectionProps, filterProps, paginationProps } = useCollection(
     isLoading || error ? [] : profiles ?? [],
@@ -122,6 +124,24 @@ const Profiles = () => {
       },
     }
   );
+
+  // Until /service answers we do not know whether the store has Profiles, so
+  // wait rather than claiming it does not.
+  if (!resolved) {
+    return (
+      <Box textAlign="center">
+        <Spinner />
+      </Box>
+    );
+  }
+
+  if (detectionFailed) {
+    return (
+      <Alert type="warning" header="Could not determine store capabilities">
+        Reading <code>/service</code> failed, so Flow Profile support is unknown.
+      </Alert>
+    );
+  }
 
   if (!supported) {
     return (

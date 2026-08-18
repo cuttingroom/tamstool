@@ -12,7 +12,9 @@ export const useService = () => {
     {
       revalidateOnFocus: false,
       revalidateIfStale: false,
-      shouldRetryOnError: false,
+      // This one request gates every 8.2 feature, so a transient failure must
+      // not pin the session to the 8.0 baseline until the user reloads.
+      shouldRetryOnError: true,
     }
   );
 
@@ -26,6 +28,11 @@ export const useService = () => {
  * for it before building a query so that a store which turns out to be 8.2 is
  * not first queried with 8.0 parameters and then immediately queried again.
  * A store that does not serve /service resolves to the 8.0 baseline.
+ *
+ * A /service that errors resolves to that same baseline so the tool stays
+ * usable, but `detectionFailed` distinguishes it from a store that genuinely
+ * advertises an older version. Callers that state the store's version must
+ * check it — "we could not ask" is not the same claim as "the store said 8.0".
  */
 export const useCapabilities = () => {
   const { service, isLoading, error } = useService();
@@ -35,6 +42,7 @@ export const useCapabilities = () => {
     ...capabilities,
     service,
     error,
+    detectionFailed: Boolean(error),
     resolved: !isLoading,
   };
 };
@@ -83,7 +91,7 @@ export const useStorageBackends = () => {
 /** Flow Profiles, added in 8.2 at /service/profiles. */
 export const useProfiles = () => {
   const api = useApi();
-  const { profiles: supported, resolved } = useCapabilities();
+  const { profiles: supported, resolved, detectionFailed } = useCapabilities();
 
   const { data, error, isLoading } = useSWR(
     api.endpoint && resolved && supported
@@ -95,7 +103,9 @@ export const useProfiles = () => {
 
   return {
     profiles: Array.isArray(data?.data) ? data.data : undefined,
-    supported: supported && resolved,
+    supported,
+    resolved,
+    detectionFailed,
     isLoading,
     error,
   };
@@ -103,7 +113,7 @@ export const useProfiles = () => {
 
 export const useProfile = (profileId) => {
   const api = useApi();
-  const { profiles: supported, resolved } = useCapabilities();
+  const { profiles: supported, resolved, detectionFailed } = useCapabilities();
 
   const { data, error, isLoading } = useSWR(
     api.endpoint && resolved && supported && profileId
@@ -113,5 +123,5 @@ export const useProfile = (profileId) => {
     { revalidateOnFocus: false, shouldRetryOnError: false }
   );
 
-  return { profile: data?.data, supported: supported && resolved, isLoading, error };
+  return { profile: data?.data, supported, resolved, detectionFailed, isLoading, error };
 };

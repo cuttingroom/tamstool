@@ -33,7 +33,7 @@ const StoreManager = () => {
   const updateStore = useStoreManager((s) => s.updateStore);
   const setActiveStore = useStoreManager((s) => s.setActiveStore);
   // Only the active store is queried, so the version is only known for that row.
-  const { apiVersion, resolved } = useCapabilities();
+  const { apiVersion, resolved, detectionFailed } = useCapabilities();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editingStore, setEditingStore] = useState(null);
@@ -219,6 +219,9 @@ const StoreManager = () => {
             cell: (item) => {
               if (item.id !== activeStoreId) return "—";
               if (!resolved) return <StatusIndicator type="loading">…</StatusIndicator>;
+              if (detectionFailed) {
+                return <StatusIndicator type="error">Unreachable</StatusIndicator>;
+              }
               return apiVersion ?? "Unknown";
             },
           },

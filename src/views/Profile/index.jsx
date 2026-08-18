@@ -14,7 +14,26 @@ import { useProfile } from "@/hooks/useService";
 
 const Profile = () => {
   const { profileId } = useParams();
-  const { profile, supported, isLoading, error } = useProfile(profileId);
+  const { profile, supported, resolved, detectionFailed, isLoading, error } =
+    useProfile(profileId);
+
+  // Until /service answers we do not know whether the store has Profiles, so
+  // wait rather than claiming it does not.
+  if (!resolved) {
+    return (
+      <Box textAlign="center">
+        <Spinner />
+      </Box>
+    );
+  }
+
+  if (detectionFailed) {
+    return (
+      <Alert type="warning" header="Could not determine store capabilities">
+        Reading <code>/service</code> failed, so Flow Profile support is unknown.
+      </Alert>
+    );
+  }
 
   if (!supported) {
     return (
