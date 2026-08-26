@@ -274,7 +274,9 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
       await Promise.all(
         entries.map(async ([sourceId, flowId]) => {
           try {
-            const res = await api.get(`/flows/${flowId}?include_timerange=true&_t=${Date.now()}`);
+            // No cache-buster: 8.2 stores validate query parameters and reject
+            // an unknown one with a 400. api.get already fetches no-store.
+            const res = await api.get(`/flows/${flowId}?include_timerange=true`);
             const flow = res.data;
             if (!flow) return;
 
