@@ -8,7 +8,11 @@ import {
 import { Link } from "react-router-dom";
 import ValueWithLabel from "@/components/ValueWithLabel";
 import EditableField from "@/components/EditableField";
-import { DATE_FORMAT, STATUS_MAPPINGS } from "@/constants";
+import {
+  DATE_FORMAT,
+  FLOW_STATUS_MAPPINGS,
+  WEBHOOK_STATUS_MAPPINGS,
+} from "@/constants";
 import chunkArray from "@/utils/chunkArray";
 import { parseTimerangeDateTime } from "@/utils/timerange";
 
@@ -18,6 +22,8 @@ const excludedFields = [
   "collected_by",
   "essence_parameters",
   "tags",
+  // Rendered by the Profile view's Flow metadata tab.
+  "flow_metadata",
 ];
 
 const editableFields = ["label", "description"];
@@ -74,10 +80,18 @@ const EntityDetails = ({ entityType, entity }) => {
       return <Link to={`/sources/${value}`}>{value}</Link>;
     }
 
-    if (label === "status" && typeof value === "string" && STATUS_MAPPINGS[value]) {
-      return (
-        <StatusIndicator {...STATUS_MAPPINGS[value]}>{value}</StatusIndicator>
-      );
+    if (label === "profile_id") {
+      return <Link to={`/profiles/${value}`}>{value}</Link>;
+    }
+
+    if (label === "status" && typeof value === "string") {
+      const mappings =
+        entityType === "flows" ? FLOW_STATUS_MAPPINGS : WEBHOOK_STATUS_MAPPINGS;
+      if (mappings[value]) {
+        return (
+          <StatusIndicator {...mappings[value]}>{value}</StatusIndicator>
+        );
+      }
     }
 
     if (typeof value === "boolean") {

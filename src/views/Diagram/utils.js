@@ -1,11 +1,40 @@
 import { formatPrecedence, nodeSize } from "./constants";
+import { TAMS_PAGE_LIMIT } from "@/constants";
 
-const getEntities = async (api, path, graph = {}) => {
+/**
+ * Fetch every Source or Flow collected by `id` in one request and seed them into
+ * the prefetch cache, so the traversal below can walk the collection without a
+ * request per member. Needs the TAMS 8.2 collected_by_ids filter.
+ */
+const prefetchCollection = async (api, entityType, id, prefetched) => {
+  try {
+    const { data } = await api.get(
+      `/${entityType}?collected_by_ids=${id}&limit=${TAMS_PAGE_LIMIT}`
+    );
+    if (!Array.isArray(data)) return;
+    data.forEach((entity) =>
+      prefetched.set(`/${entityType}/${entity.id}`, entity)
+    );
+  } catch {
+    // Fall back to fetching members individually.
+  }
+};
+
+const getEntities = async (
+  api,
+  path,
+  graph = {},
+  canQueryCollections = false,
+  prefetched = new Map()
+) => {
   // If we've already processed this path, return
   if (graph[path]) return graph;
 
-  // Fetch current path data
-  const { data: resp } = await api.get(path);
+  // Fetch current path data, unless a collection query already returned it
+  let resp = prefetched.get(path);
+  if (!resp) {
+    ({ data: resp } = await api.get(path));
+  }
   graph[path] = resp;
 
   // Collect all promises for parallel execution
@@ -14,7 +43,9 @@ const getEntities = async (api, path, graph = {}) => {
   if (resp.source_id) {
     const sourcePath = `/sources/${resp.source_id}`;
     if (!graph[sourcePath]) {
-      promises.push(getEntities(api, sourcePath, graph));
+      promises.push(
+        getEntities(api, sourcePath, graph, canQueryCollections, prefetched)
+      );
     }
   } else {
     // Handle source flows in parallel
@@ -32,23 +63,53 @@ const getEntities = async (api, path, graph = {}) => {
     const type = resp.source_id ? "flows" : "sources";
     const collectedPromises = resp.collected_by
       .filter((collection) => !graph[`/${type}/${collection}`])
-      .map((collection) => getEntities(api, `/${type}/${collection}`, graph));
+      .map((collection) =>
+        getEntities(
+          api,
+          `/${type}/${collection}`,
+          graph,
+          canQueryCollections,
+          prefetched
+        )
+      );
     promises.push(...collectedPromises);
   }
 
   // Handle flow collections
-  if (Array.isArray(resp.flow_collection)) {
+  if (Array.isArray(resp.flow_collection) && resp.flow_collection.length > 0) {
+    if (canQueryCollections) {
+      await prefetchCollection(api, "flows", resp.id, prefetched);
+    }
     const flowPromises = resp.flow_collection
       .filter((collection) => !graph[`/flows/${collection.id}`])
-      .map((collection) => getEntities(api, `/flows/${collection.id}`, graph));
+      .map((collection) =>
+        getEntities(
+          api,
+          `/flows/${collection.id}`,
+          graph,
+          canQueryCollections,
+          prefetched
+        )
+      );
     promises.push(...flowPromises);
   }
 
   // Handle source collections
-  if (Array.isArray(resp.source_collection)) {
+  if (Array.isArray(resp.source_collection) && resp.source_collection.length > 0) {
+    if (canQueryCollections) {
+      await prefetchCollection(api, "sources", resp.id, prefetched);
+    }
     const sourcePromises = resp.source_collection
       .filter((collection) => !graph[`/sources/${collection.id}`])
-      .map((collection) => getEntities(api, `/sources/${collection.id}`, graph));
+      .map((collection) =>
+        getEntities(
+          api,
+          `/sources/${collection.id}`,
+          graph,
+          canQueryCollections,
+          prefetched
+        )
+      );
     promises.push(...sourcePromises);
   }
 
@@ -105,10 +166,10 @@ const getPositions = (entities) => {
   );
 };
 
-export const getElements = async (api, path) => {
+export const getElements = async (api, path, canQueryCollections = false) => {
   // Get a list of all Sources and Flows related to the input entity.
-  const entities = await getEntities(api, path).then((graph) =>
-    Object.values(graph)
+  const entities = await getEntities(api, path, {}, canQueryCollections).then(
+    (graph) => Object.values(graph)
   );
   const positions = getPositions(entities);
 

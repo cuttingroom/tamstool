@@ -6,6 +6,8 @@ import Flow from "@/views/Flow";
 import Flows from "@/views/Flows";
 import OmakaseTamsPlayer from "@/views/OmakaseTamsPlayer";
 import Home from "@/views/Home";
+import Profile from "@/views/Profile";
+import Profiles from "@/views/Profiles";
 import Layout from "@/views/Layout";
 import React from "react";
 import Source from "@/views/Source";
@@ -29,6 +31,10 @@ const App = () => {
           <Route path="flows">
             <Route index element={<Flows />} />
             <Route path=":flowId" element={<Flow />} />
+          </Route>
+          <Route path="profiles">
+            <Route index element={<Profiles />} />
+            <Route path=":profileId" element={<Profile />} />
           </Route>
           <Route path="webhooks">
             <Route index element={<Webhooks />} />

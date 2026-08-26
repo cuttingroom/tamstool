@@ -1,20 +1,36 @@
 import { useApi } from "@/hooks/useApi";
 import useSWR from "swr";
 import useSWRMutation from "swr/mutation";
+import useEntityListing from "@/hooks/useEntityListing";
+import { useCapabilities } from "@/hooks/useService";
+import buildQuery from "@/utils/buildQuery";
 import paginationFetcher from "@/utils/paginationFetcher";
+import { FLOW_STATUS } from "@/utils/flowStatus";
+import { TAMS_PAGE_LIMIT, TAMS_POLLING_INTERVAL } from "@/constants";
 
-const useFlowsQuery = (url) => {
+export const useFlows = (options = {}) => {
+  const { items, ...rest } = useEntityListing("flows", {
+    refreshInterval: TAMS_POLLING_INTERVAL,
+    ...options,
+  });
+
+  return { flows: items, ...rest };
+};
+
+export const useFlowsBySource = (sourceId) => {
   const api = useApi();
+  const path = sourceId ? `/flows?source_id=${sourceId}` : null;
+
   const { data, mutate, error, isLoading, isValidating } = useSWR(
-    api.endpoint && url ? [api.endpoint, url] : null,
-    ([, path]) => paginationFetcher(path, null, api),
+    api.endpoint && path ? [api.endpoint, path] : null,
+    ([, requestPath]) => paginationFetcher(requestPath, null, api),
     {
-      refreshInterval: 3000,
+      refreshInterval: TAMS_POLLING_INTERVAL,
     }
   );
 
   return {
-    flows: data,
+    flows: data?.items,
     mutate,
     isLoading,
     isValidating,
@@ -22,10 +38,36 @@ const useFlowsQuery = (url) => {
   };
 };
 
-export const useFlows = () => useFlowsQuery("/flows?limit=300");
+/**
+ * Flows currently receiving content, via the 8.2 `status` filter.
+ *
+ * Returns `supported: false` on older stores, where the caller has to fall back
+ * to inspecting the deprecated flow_status tag on each Flow it already holds.
+ */
+export const useIngestingFlows = (enabled = true) => {
+  const api = useApi();
+  const { flowStatus: supported, resolved } = useCapabilities();
 
-export const useFlowsBySource = (sourceId) =>
-  useFlowsQuery(sourceId ? `/flows?source_id=${sourceId}` : null);
+  const path = buildQuery("/flows", {
+    limit: TAMS_PAGE_LIMIT,
+    status: FLOW_STATUS.INGESTING,
+  });
+
+  const { data, error, isLoading } = useSWR(
+    api.endpoint && resolved && supported && enabled
+      ? [api.endpoint, "ingesting", path]
+      : null,
+    () => paginationFetcher(path, TAMS_PAGE_LIMIT, api),
+    { refreshInterval: TAMS_POLLING_INTERVAL }
+  );
+
+  return {
+    flows: data?.items,
+    supported: supported && resolved,
+    isLoading,
+    error,
+  };
+};
 
 export const useFlow = (flowId) => {
   const api = useApi();
@@ -37,9 +79,9 @@ export const useFlow = (flowId) => {
     isValidating,
   } = useSWR(
     api.endpoint ? [api.endpoint, "/flows", flowId] : null,
-    ([, path, flowId]) => api.get(`${path}/${flowId}?include_timerange=true`),
+    ([, path, id]) => api.get(`${path}/${id}?include_timerange=true`),
     {
-      refreshInterval: 3000,
+      refreshInterval: TAMS_POLLING_INTERVAL,
     }
   );
 
@@ -81,21 +123,5 @@ export const useDeleteTimerange = () => {
   return {
     delTimerange: trigger,
     isDeletingTimerange: isMutating,
-  };
-};
-
-export const useFlowStatusTag = () => {
-  const api = useApi();
-  const { trigger, isMutating } = useSWRMutation(
-    api.endpoint ? [api.endpoint, "/flows"] : null,
-    ([, path], { arg }) =>
-      api.put(`${path}/${arg.flowId}/tags/flow_status`, arg.status).then(
-        (response) => response.data
-      )
-  );
-
-  return {
-    update: trigger,
-    isUpdating: isMutating,
   };
 };

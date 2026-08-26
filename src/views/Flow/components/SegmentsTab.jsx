@@ -1,6 +1,10 @@
+import { useState } from "react";
 import {
+  Badge,
   Box,
   CollectionPreferences,
+  FormField,
+  Select,
   SpaceBetween,
   Table,
 } from "@cloudscape-design/components";
@@ -8,12 +12,35 @@ import usePreferencesStore from "@/stores/usePreferencesStore";
 
 import { SEGMENT_COUNT, DATE_FORMAT } from "@/constants";
 import { parseTimerangeDateTime } from "@/utils/timerange";
+import { isInitSegmentEntry } from "@/utils/initSegments";
 import { useLastN } from "@/hooks/useSegments";
+import { useStorageBackends } from "@/hooks/useService";
+
+const ANY = "__any__";
+const ANY_OPTION = { value: ANY, label: "Any" };
 
 const SegmentsTab = ({ flowId }) => {
   const preferences = usePreferencesStore((state) => state.segmentsPreferences);
   const setPreferences = usePreferencesStore((state) => state.setSegmentsPreferences);
-  const { segments, isLoading: loadingSegments } = useLastN(flowId, SEGMENT_COUNT);
+
+  // 8.2 storage_backend_tag filters narrow which storage backends' get_urls are
+  // returned. The options come from the tags the store's backends actually carry.
+  const {
+    tags: storageTags,
+    supported: supportsStorageTags,
+    error: storageTagsError,
+  } = useStorageBackends();
+  const [tagName, setTagName] = useState(ANY);
+  const [tagValue, setTagValue] = useState(ANY);
+
+  const selectedTag = storageTags.find((tag) => tag.name === tagName);
+  const { segments, isLoading: loadingSegments } = useLastN(
+    flowId,
+    SEGMENT_COUNT,
+    tagName === ANY
+      ? undefined
+      : { name: tagName, value: tagValue === ANY ? undefined : tagValue }
+  );
 
   const columnDefinitions = [
     {
@@ -41,6 +68,15 @@ const SegmentsTab = ({ flowId }) => {
       id: "object_timerange",
       header: "Object Timerange",
       cell: (item) => item.object_timerange,
+    },
+    {
+      id: "init_object",
+      header: "Init Object",
+      // Pre-8.2 stores have no init_object; they list the init object itself as
+      // a zero-length entry, which is easily mistaken for a media segment.
+      cell: (item) =>
+        item.init_object?.object_id ??
+        (isInitSegmentEntry(item) ? <Badge>init segment</Badge> : null),
     },
     {
       id: "sample_offset",
@@ -83,10 +119,54 @@ const SegmentsTab = ({ flowId }) => {
     title: "Preferences",
   };
 
-
   return (
     <SpaceBetween size="xs">
       <i>Showing last {SEGMENT_COUNT} segments</i>
+      {supportsStorageTags && storageTagsError && (
+        <Box color="text-status-error" fontSize="body-s">
+          Storage backend tags unavailable: {storageTagsError.message}
+        </Box>
+      )}
+      {supportsStorageTags && storageTags.length > 0 && (
+        <SpaceBetween size="xs" direction="horizontal" alignItems="end">
+          <FormField label="Storage backend tag">
+            <Select
+              selectedOption={
+                tagName === ANY
+                  ? ANY_OPTION
+                  : { value: tagName, label: tagName }
+              }
+              onChange={({ detail }) => {
+                setTagName(detail.selectedOption.value);
+                setTagValue(ANY);
+              }}
+              options={[
+                ANY_OPTION,
+                ...storageTags.map((tag) => ({
+                  value: tag.name,
+                  label: tag.name,
+                })),
+              ]}
+            />
+          </FormField>
+          <FormField label="Value">
+            <Select
+              disabled={tagName === ANY}
+              selectedOption={
+                tagValue === ANY ? ANY_OPTION : { value: tagValue, label: tagValue }
+              }
+              onChange={({ detail }) => setTagValue(detail.selectedOption.value)}
+              options={[
+                ANY_OPTION,
+                ...(selectedTag?.values ?? []).map((value) => ({
+                  value,
+                  label: value,
+                })),
+              ]}
+            />
+          </FormField>
+        </SpaceBetween>
+      )}
       <Table
         trackBy="object_id"
         variant="borderless"

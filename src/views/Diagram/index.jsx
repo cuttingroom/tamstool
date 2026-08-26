@@ -15,6 +15,7 @@ import { buildStylesheet } from "./constants.js";
 import { getElements } from "./utils";
 import { useEffect } from "react";
 import { useApi } from "@/hooks/useApi";
+import { useCapabilities } from "@/hooks/useService";
 
 const Diagram = () => {
   const { type, id } = useParams();
@@ -23,22 +24,37 @@ const Diagram = () => {
   const [elements, setElements] = useState([]);
   const [error, setError] = useState(null);
   const api = useApi();
+  const { collectedByIds: canQueryCollections, resolved } = useCapabilities();
 
   useEffect(() => {
+    // Without this gate the traversal runs twice on every open — once with
+    // canQueryCollections false (the slow per-member walk), then again once
+    // /service resolves — and the slower run can be the one that lands last.
+    if (!resolved) return undefined;
+
+    let cancelled = false;
     const loadData = async () => {
       setError(null);
       try {
-        const elems = await getElements(api, `/${type}/${id}`);
+        const elems = await getElements(
+          api,
+          `/${type}/${id}`,
+          canQueryCollections
+        );
+        if (cancelled) return;
         setElements(elems);
         cyRef.current?.fit();
       } catch (err) {
-        setError(err);
+        if (!cancelled) setError(err);
       }
     };
     loadData();
 
-    return () => cyRef.current?.removeAllListeners();
-  }, [type, id, api]);
+    return () => {
+      cancelled = true;
+      cyRef.current?.removeAllListeners();
+    };
+  }, [type, id, api, canQueryCollections, resolved]);
 
   const handleZoom = (action) => {
     const zoom = cyRef.current?.zoom();
