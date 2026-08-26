@@ -14,6 +14,11 @@ import "./Embed.css";
 
 const NANOS_PER_MS = 1_000_000n;
 const STORAGE_KEY = "tamstool-stores";
+const RECHECK_INTERVAL_MS = 5000;
+
+// Open #/embed?debug to trace what each source resolved to.
+const debug = (...args) =>
+  window.location.hash.includes("debug") && console.debug("[embed]", ...args);
 
 const isInIframe = (() => {
   try { return window.self !== window.top; } catch { return true; }
@@ -129,13 +134,17 @@ const hasSettled = (flow, hasSegments) =>
  * comes from the flow's `status` (8.2) or the deprecated flow_status tag,
  * guarded by recent segment activity.
  *
- * A source is examined on every sources poll until it settles, and only then
+ * A source is re-examined every few seconds until it settles, and only then
  * cached. Settled means nothing further can change what the row shows: the
  * flow is closed, or it already carries media. A flow that is merely empty so
  * far -- awaiting content, or created ahead of the ingest -- is not settled,
  * so a recording that starts while the page is open reaches Open on its own
  * rather than at the next reload. `liveSourceIds` additionally re-opens a
  * source the store reports as ingesting.
+ *
+ * The re-check runs on its own interval rather than on the sources poll: the
+ * listing is deliberately kept deeply equal between polls, so SWR returns the
+ * same array and effects keyed on it never fire.
  */
 const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
   const api = useApi();
@@ -184,16 +193,25 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
               canQueryCollections
             );
             const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
-            const flow = listRes.data?.[0];
-            if (!flow) return;
+            const listed = listRes.data?.[0];
+            if (!listed) {
+              debug(source.id, "no flow yet");
+              return;
+            }
+
+            const detailRes = await api.get(`/flows/${listed.id}?include_timerange=true`);
+            // The listing strips segments_updated, so growth has to be judged
+            // on the detail record: a flow created well before its ingest
+            // starts would otherwise read as an abandoned one and never be
+            // polled.
+            const flow = detailRes.data ?? listed;
 
             const fr = flow.essence_parameters?.frame_rate;
             const fps = fr?.numerator ? fr.numerator / (fr.denominator || 1) : null;
             const isGrowing = isFlowGrowing(flow);
 
             let durationMs = null;
-            const detailRes = await api.get(`/flows/${flow.id}?include_timerange=true`);
-            const tr = detailRes.data?.timerange;
+            const tr = flow.timerange;
             const hasSegments = timerangeHasMedia(tr);
             if (tr) {
               const parsed = parseTimerange(tr);
@@ -208,6 +226,15 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
               growingRef.current.delete(source.id);
               if (hasSettled(flow, hasSegments)) settledRef.current.add(source.id);
             }
+
+            debug(source.id, {
+              flow: flow.id,
+              status: getFlowStatus(flow),
+              timerange: tr ?? null,
+              isGrowing,
+              hasSegments,
+              settled: settledRef.current.has(source.id),
+            });
 
             if (!cancelled) {
               knownRef.current.add(source.id);
@@ -224,7 +251,16 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
     };
 
     fetchAll();
-    return () => { cancelled = true; };
+    // On a timer, not just on a new source list: paginationFetcher strips the
+    // fields that change during an ingest so that the listing stays deeply
+    // equal across polls, and SWR then hands back the very same array. The
+    // effect therefore does not re-run while a recording is under way, which
+    // is precisely when a source has something new to say.
+    const id = setInterval(fetchAll, RECHECK_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [api, displayedSources, liveSourceIds, canQueryCollections, resolved]);
 
   // Poll growing flows by their flow ID every 5s
