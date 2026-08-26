@@ -65,18 +65,31 @@ const Layout = () => {
     detectionFailed,
   } = useCapabilities();
 
-  const navHeader = {
-    text: activeStore ? activeStore.name : "No store selected",
-    href: "/stores",
-  };
-
-  // Sits directly below the store name. Red distinguishes "could not reach
-  // /service" from a store that simply advertises no version.
+  // Red distinguishes "could not reach /service" from a store that simply
+  // advertises no version.
   const versionBadge = activeStore && resolved && (
     <Badge color={detectionFailed ? "red" : apiVersion ? "blue" : "grey"}>
       {apiVersion ? `TAMS ${apiVersion}` : "TAMS ?"}
     </Badge>
   );
+
+  // A span rather than a div: the header renders this inside its own span, and
+  // only phrasing content is valid there.
+  const navHeader = {
+    text: activeStore ? (
+      <>
+        {activeStore.name}
+        {versionBadge && (
+          <span style={{ display: "block", marginBlockStart: "6px" }}>
+            {versionBadge}
+          </span>
+        )}
+      </>
+    ) : (
+      "No store selected"
+    ),
+    href: "/stores",
+  };
 
   const navItems = [
     { type: "link", text: "Sources", href: "/sources", disabled: !activeStore },
@@ -112,7 +125,6 @@ const Layout = () => {
         navigation={
           <SideNavigation
             header={navHeader}
-            itemsControl={versionBadge}
             activeHref={pathname}
             onFollow={followLink}
             items={navItems}
