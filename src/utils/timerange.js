@@ -226,3 +226,31 @@ export const parseTimerangeDateTime = (timerange) => {
     };
   }
 };
+
+/**
+ * Whether a timerange covers any media at all.
+ *
+ * A growing flow reports an open-ended range (`[start_`), so it has segments
+ * but no computable duration -- duration is therefore not a usable proxy for
+ * "has media". The bounds are read from the string rather than from
+ * parseTimerange, which collapses "empty", "inverted" and "did not parse" onto
+ * the same 0n..0n result.
+ */
+export const timerangeHasMedia = (timerange) => {
+  if (typeof timerange !== "string" || !timerange) return false;
+  if (EMPTY_PATTERNS.has(timerange)) return false;
+
+  const match = TIMERANGE_REGEX.exec(timerange);
+  if (!match) return false;
+
+  const { startSeconds, startNanos, endSeconds, endNanos } = match.groups;
+  const hasStart = startSeconds != null || startNanos != null;
+  const hasEnd = endSeconds != null || endNanos != null;
+  if (!hasStart && !hasEnd) return false;
+
+  // A bare timestamp with no range separator is a single point, so zero-length.
+  if (!timerange.includes("_")) return false;
+  if (!hasStart || !hasEnd) return true;
+
+  return !(startSeconds === endSeconds && startNanos === endNanos);
+};
