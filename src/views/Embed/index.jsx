@@ -6,7 +6,7 @@ import { useCapabilities } from "@/hooks/useService";
 import useStoreManager from "@/stores/useStoreManager";
 import StoreManager from "@/views/StoreManager";
 import { parseTimerange, timerangeHasMedia } from "@/utils/timerange";
-import { isFlowGrowing } from "@/utils/flowStatus";
+import { FLOW_STATUS, getFlowStatus, isFlowGrowing } from "@/utils/flowStatus";
 import { findVideoMember } from "@/utils/editorialPurpose";
 import { TAMS_PAGE_LIMIT, VIEW_MODE } from "@/constants";
 import { version as appVersion } from "../../../package.json";
@@ -113,14 +113,29 @@ const resolveVideoSourceId = async (source, api, canQueryCollections) => {
 };
 
 /**
- * For each displayed source, fetch its video flow to get fps, duration,
- * growing status, and whether any segments have landed yet. Growing status comes from the flow's `status` (8.2) or the
- * deprecated flow_status tag, guarded by recent segment activity.
+ * Whether a flow can still change what its row shows.
  *
- * On initial load, all sources are fetched once. Sources that are growing are
- * tracked by flow ID and re-polled every 5s until they close. `liveSourceIds`
- * re-opens a source that has since started ingesting, which the closed-source
- * cache would otherwise hide until the page was reloaded.
+ * An empty flow is not a finished one: a store may create the flow when the
+ * recording is scheduled and fill it only once the ingest starts, and reading
+ * that first look as final is what left a live source stuck without an Open
+ * button. Only a closed flow, or one that already carries media, is done.
+ */
+const hasSettled = (flow, hasSegments) =>
+  getFlowStatus(flow) === FLOW_STATUS.CLOSED_COMPLETE || hasSegments;
+
+/**
+ * For each displayed source, fetch its video flow to get fps, duration,
+ * growing status, and whether any segments have landed yet. Growing status
+ * comes from the flow's `status` (8.2) or the deprecated flow_status tag,
+ * guarded by recent segment activity.
+ *
+ * A source is examined on every sources poll until it settles, and only then
+ * cached. Settled means nothing further can change what the row shows: the
+ * flow is closed, or it already carries media. A flow that is merely empty so
+ * far -- awaiting content, or created ahead of the ingest -- is not settled,
+ * so a recording that starts while the page is open reaches Open on its own
+ * rather than at the next reload. `liveSourceIds` additionally re-opens a
+ * source the store reports as ingesting.
  */
 const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
   const api = useApi();
@@ -128,25 +143,38 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
   const [flowDetails, setFlowDetails] = useState(new Map());
   const [isLoading, setIsLoading] = useState(false);
 
-  // Permanent cache for closed sources — never re-fetched
-  const closedRef = useRef(new Set());
+  // Sources that can no longer change — never re-fetched
+  const settledRef = useRef(new Set());
   // Map of sourceId → videoFlowId for growing sources that need polling
   const growingRef = useRef(new Map());
+  // Sources a row has details for, so re-checking does not blink "Loading..."
+  const knownRef = useRef(new Set());
 
-  // Fetch all uncached sources when the source list changes
+  // Fetch every unsettled source when the source list changes
   useEffect(() => {
     // Wait for /service: resolving a source with canQueryCollections still
-    // false would cache the wrong video flow in closedRef permanently.
+    // false would cache the wrong video flow in settledRef permanently.
     if (!resolved || !api.endpoint || displayedSources.length === 0) return;
     let cancelled = false;
 
     const fetchAll = async () => {
-      // A source that has started ingesting since we last looked is not closed.
-      liveSourceIds.forEach((id) => closedRef.current.delete(id));
-      const toFetch = displayedSources.filter((s) => !closedRef.current.has(s.id));
+      // A source that has started ingesting since we last looked has more to
+      // give. useIngestingFlows reports the source the flow hangs off, which
+      // for a multi-source recording is the video child rather than the row on
+      // display, so collection members are matched too.
+      displayedSources.forEach((source) => {
+        const live =
+          liveSourceIds.has(source.id) ||
+          (source.source_collection ?? []).some((member) =>
+            liveSourceIds.has(member?.id)
+          );
+        if (live) settledRef.current.delete(source.id);
+      });
+      const toFetch = displayedSources.filter((s) => !settledRef.current.has(s.id));
       if (toFetch.length === 0) return;
 
-      setIsLoading(true);
+      const showLoading = toFetch.some((s) => !knownRef.current.has(s.id));
+      if (showLoading) setIsLoading(true);
       await Promise.all(
         toFetch.map(async (source) => {
           try {
@@ -177,11 +205,12 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
             if (isGrowing) {
               growingRef.current.set(source.id, flow.id);
             } else {
-              closedRef.current.add(source.id);
               growingRef.current.delete(source.id);
+              if (hasSettled(flow, hasSegments)) settledRef.current.add(source.id);
             }
 
             if (!cancelled) {
+              knownRef.current.add(source.id);
               setFlowDetails((prev) => {
                 const next = new Map(prev);
                 next.set(source.id, { fps, isGrowing, durationMs, hasSegments });
@@ -191,7 +220,7 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
           } catch { /* skip */ }
         })
       );
-      if (!cancelled) setIsLoading(false);
+      if (!cancelled && showLoading) setIsLoading(false);
     };
 
     fetchAll();
@@ -226,8 +255,8 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
             }
 
             if (!isGrowing) {
-              closedRef.current.add(sourceId);
               growingRef.current.delete(sourceId);
+              if (hasSettled(flow, hasSegments)) settledRef.current.add(sourceId);
             }
 
             setFlowDetails((prev) => {
