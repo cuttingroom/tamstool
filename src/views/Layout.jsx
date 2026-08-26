@@ -70,6 +70,14 @@ const Layout = () => {
     href: "/stores",
   };
 
+  // Sits directly below the store name. Red distinguishes "could not reach
+  // /service" from a store that simply advertises no version.
+  const versionBadge = activeStore && resolved && (
+    <Badge color={detectionFailed ? "red" : apiVersion ? "blue" : "grey"}>
+      {apiVersion ? `TAMS ${apiVersion}` : "TAMS ?"}
+    </Badge>
+  );
+
   const navItems = [
     { type: "link", text: "Sources", href: "/sources", disabled: !activeStore },
     { type: "link", text: "Flows", href: "/flows", disabled: !activeStore },
@@ -88,18 +96,7 @@ const Layout = () => {
       disabled: !activeStore,
     },
     { type: "divider" },
-    {
-      type: "link",
-      text: "Manage Stores",
-      href: "/stores",
-      // Red distinguishes "could not reach /service" from a store that simply
-      // advertises no version.
-      info: activeStore && resolved && (
-        <Badge color={detectionFailed ? "red" : apiVersion ? "blue" : "grey"}>
-          {apiVersion ? `TAMS ${apiVersion}` : "TAMS ?"}
-        </Badge>
-      ),
-    },
+    { type: "link", text: "Manage Stores", href: "/stores" },
   ];
 
   return (
@@ -115,6 +112,7 @@ const Layout = () => {
         navigation={
           <SideNavigation
             header={navHeader}
+            itemsControl={versionBadge}
             activeHref={pathname}
             onFollow={followLink}
             items={navItems}

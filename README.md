@@ -26,8 +26,8 @@ tag.
 
 The tool reads `api_version` from the store's `/service` endpoint and gates the
 8.2 query parameters listed below on it, so pointing it at an older store
-degrades cleanly rather than erroring. The detected version is shown beside
-**Manage Stores** in the sidebar and in the store list.
+degrades cleanly rather than erroring. The detected version is shown below the
+active store name in the sidebar and in the store list.
 
 8.2 features used where available:
 
