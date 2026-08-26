@@ -5,7 +5,7 @@ import { useIngestingFlows } from "@/hooks/useFlows";
 import { useCapabilities } from "@/hooks/useService";
 import useStoreManager from "@/stores/useStoreManager";
 import StoreManager from "@/views/StoreManager";
-import { parseTimerange } from "@/utils/timerange";
+import { parseTimerange, timerangeHasMedia } from "@/utils/timerange";
 import { isFlowGrowing } from "@/utils/flowStatus";
 import { findVideoMember } from "@/utils/editorialPurpose";
 import { TAMS_PAGE_LIMIT, VIEW_MODE } from "@/constants";
@@ -113,8 +113,8 @@ const resolveVideoSourceId = async (source, api, canQueryCollections) => {
 };
 
 /**
- * For each displayed source, fetch its video flow to get fps, duration and
- * growing status. Growing status comes from the flow's `status` (8.2) or the
+ * For each displayed source, fetch its video flow to get fps, duration,
+ * growing status, and whether any segments have landed yet. Growing status comes from the flow's `status` (8.2) or the
  * deprecated flow_status tag, guarded by recent segment activity.
  *
  * On initial load, all sources are fetched once. Sources that are growing are
@@ -166,6 +166,7 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
             let durationMs = null;
             const detailRes = await api.get(`/flows/${flow.id}?include_timerange=true`);
             const tr = detailRes.data?.timerange;
+            const hasSegments = timerangeHasMedia(tr);
             if (tr) {
               const parsed = parseTimerange(tr);
               if (parsed.start !== null && parsed.end !== null) {
@@ -183,7 +184,7 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
             if (!cancelled) {
               setFlowDetails((prev) => {
                 const next = new Map(prev);
-                next.set(source.id, { fps, isGrowing, durationMs });
+                next.set(source.id, { fps, isGrowing, durationMs, hasSegments });
                 return next;
               });
             }
@@ -216,6 +217,7 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
 
             let durationMs = null;
             const tr = flow.timerange;
+            const hasSegments = timerangeHasMedia(tr);
             if (tr) {
               const parsed = parseTimerange(tr);
               if (parsed.start !== null && parsed.end !== null) {
@@ -231,7 +233,7 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
             setFlowDetails((prev) => {
               const next = new Map(prev);
               const existing = next.get(sourceId);
-              next.set(sourceId, { ...existing, isGrowing, durationMs });
+              next.set(sourceId, { ...existing, isGrowing, durationMs, hasSegments });
               return next;
             });
           } catch { /* skip */ }
@@ -315,6 +317,7 @@ const Embed = () => {
         ...source,
         isGrowing: details?.isGrowing ?? false,
         durationMs: details?.durationMs ?? null,
+        hasSegments: details?.hasSegments ?? false,
         fps: details?.fps ?? null,
         detailsLoaded: !!details,
       };
@@ -426,7 +429,7 @@ const Embed = () => {
             ) : source.durationMs > 0 ? (
               <span className="embed-row-duration">{formatDuration(source.durationMs)}</span>
             ) : null}
-            {source.durationMs > 0 && (
+            {source.hasSegments && (
               <button className="embed-open-btn" onClick={(e) => handleOpen(source, e)}>
                 {shiftHeld ? "NEW" : "Open"}
               </button>
