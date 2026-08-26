@@ -25,7 +25,7 @@ TAMS itself is a [BBC initiative](https://github.com/bbc/tams) for time-addressa
 
 ### TAMS versions
 
-This tool targets [TAMS 8.2](https://bbc.github.io/tams/8.2/index.html) and works against 8.0 and 8.1 stores too. It reads \`api_version\` from the store's \`/service\` endpoint and only uses newer query parameters where the store advertises support -- the detected version is shown next to **Manage Stores** in the sidebar. On an 8.2 store you additionally get:
+This tool targets [TAMS 8.2](https://bbc.github.io/tams/8.2/index.html) and works against 8.0 and 8.1 stores too. It reads \`api_version\` from the store's \`/service\` endpoint and only uses newer query parameters where the store advertises support -- the detected version is shown below the active store name in the sidebar. On an 8.2 store you additionally get:
 
 - Server-side sorting, so the newest sources arrive in the first request instead of after downloading the whole store
 - Scoped listings -- **Top-level only** and **Multi-sources only** -- built on the \`collected_by_ids\` filter
