@@ -115,9 +115,15 @@ export const useDeleteTimerange = () => {
   const { trigger, isMutating } = useSWRMutation(
     api.endpoint ? [api.endpoint, "/flows"] : null,
     ([, path], { arg }) =>
-      api.del(`${path}/${arg.flowId}/segments?timerange=${arg.timerange}`).then(
-        (response) => response.data
-      )
+      // buildQuery rather than interpolation: a timerange is typed by the user
+      // and carries `[`, `:` and `)`, which have to be percent-encoded.
+      api
+        .del(
+          buildQuery(`${path}/${arg.flowId}/segments`, {
+            timerange: arg.timerange,
+          })
+        )
+        .then((response) => response.data)
   );
 
   return {
