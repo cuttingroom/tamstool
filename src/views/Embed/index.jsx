@@ -112,8 +112,13 @@ const resolveVideoSourceId = async (source, api, canQueryCollections) => {
     const children = Array.isArray(response.data) ? response.data : [];
     const byId = new Map(children.map((child) => [child.id, child]));
     return findVideoMember(collection, byId) ?? source.id;
-  } catch {
-    return source.id;
+  } catch (error) {
+    // Not `source.id`: that is a real answer for a source with no collection,
+    // and returning it here would pin the wrong flow's fps, duration and
+    // status onto the row and present them as the source's own. Null instead,
+    // so the caller leaves the source unresolved and looks again.
+    console.warn("[embed] could not resolve the video source for", source.id, error);
+    return null;
   }
 };
 
@@ -192,6 +197,7 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
               api,
               canQueryCollections
             );
+            if (!videoSourceId) return;
             const listRes = await api.get(`/flows?source_id=${videoSourceId}&limit=1`);
             const listed = listRes.data?.[0];
             if (!listed) {
@@ -244,7 +250,12 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
                 return next;
               });
             }
-          } catch { /* skip */ }
+          } catch (error) {
+            // Reported rather than swallowed: a request that fails on every
+            // pass is otherwise indistinguishable from one that succeeds, and
+            // an unknown query parameter went unnoticed for months that way.
+            console.warn("[embed] could not read the flow for source", source.id, error);
+          }
         })
       );
       if (!cancelled && showLoading) setIsLoading(false);
@@ -303,7 +314,9 @@ const useSourceFlowDetails = (displayedSources, liveSourceIds) => {
               next.set(sourceId, { ...existing, isGrowing, durationMs, hasSegments });
               return next;
             });
-          } catch { /* skip */ }
+          } catch (error) {
+            console.warn("[embed] could not poll flow", flowId, error);
+          }
         })
       );
     };
