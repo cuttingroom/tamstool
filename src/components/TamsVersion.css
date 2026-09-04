@@ -1,0 +1,23 @@
+.tams-version {
+  display: inline-flex;
+  align-items: center;
+  /* Brand kit clearspace is one track height: 5/12 of the lockup height. */
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* Official TAMS lockup, brand kit v1.2, in its duotone treatment. The side
+   navigation follows the light/dark mode, so both background variants are
+   needed — unlike the top navigation, which is dark in both. */
+.tams-version__lockup {
+  flex-shrink: 0;
+  height: 13px;
+  aspect-ratio: 72.097 / 12.7;
+  background: url("../assets/tams-lockup-color-light.svg") no-repeat center /
+    contain;
+}
+
+body.awsui-dark-mode .tams-version__lockup {
+  background-image: url("../assets/tams-lockup-color-dark.svg");
+}

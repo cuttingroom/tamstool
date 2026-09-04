@@ -1,6 +1,5 @@
 import {
   AppLayout,
-  Badge,
   BreadcrumbGroup,
   ContentLayout,
   Flashbar,
@@ -9,6 +8,7 @@ import {
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import Header from "@/components/Header";
+import TamsVersion from "@/components/TamsVersion";
 import { useState } from "react";
 import useAlertsStore from "@/stores/useAlertsStore";
 import useStoreManager from "@/stores/useStoreManager";
@@ -65,12 +65,8 @@ const Layout = () => {
     detectionFailed,
   } = useCapabilities();
 
-  // Red distinguishes "could not reach /service" from a store that simply
-  // advertises no version.
-  const versionBadge = activeStore && resolved && (
-    <Badge color={detectionFailed ? "red" : apiVersion ? "blue" : "grey"}>
-      {apiVersion ? `TAMS ${apiVersion}` : "TAMS ?"}
-    </Badge>
+  const tamsVersion = activeStore && resolved && (
+    <TamsVersion apiVersion={apiVersion} detectionFailed={detectionFailed} />
   );
 
   // A span rather than a div: the header renders this inside its own span, and
@@ -79,9 +75,9 @@ const Layout = () => {
     text: activeStore ? (
       <>
         {activeStore.name}
-        {versionBadge && (
+        {tamsVersion && (
           <span style={{ display: "block", marginBlockStart: "6px" }}>
-            {versionBadge}
+            {tamsVersion}
           </span>
         )}
       </>
